@@ -1,18 +1,49 @@
 #!/usr/bin/env python3
-import gi
-
-gi.require_version("Gtk", "3.0")
-gi.require_version("WebKit2", "4.1")
-from gi.repository import Gtk, WebKit2, GLib
+import webview
 import json
 import os
 import threading
 import base64
+import sys
 
 from parser import parse_file
 from settings import Settings
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+
+FILE_FILTERS = (
+    "All Supported Documents (*.txt;*.pdf;*.docx;*.epub;*.html;*.htm;*.rtf;*.odt;*.md)",
+    "Text Files (*.txt;*.md)",
+    "PDF Documents (*.pdf)",
+    "Word Documents (*.docx)",
+    "EPUB Books (*.epub)",
+    "HTML Files (*.html;*.htm)",
+    "RTF Documents (*.rtf)",
+    "ODT Documents (*.odt)",
+)
+
+AUDIO_FILTERS = ("Audio Files (*.mp3;*.wav;*.ogg;*.flac;*.m4a;*.aac)",)
+
+MIME_MAP = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+}
+
+
+class Api:
+    def __init__(self, app):
+        self._app = app
+
+    def handle_message(self, msg_json):
+        try:
+            msg = json.loads(msg_json)
+            self._app.dispatch(msg)
+        except Exception as e:
+            print(f"Bridge error: {e}")
 
 
 class AmoxpohualistliApp:
@@ -22,55 +53,44 @@ class AmoxpohualistliApp:
         self.current_words = []
         self.current_path = ""
         self.current_filename = ""
+        self._window = None
 
-        self.window = Gtk.Window(title="Amoxpohualistli — Speed Reader")
-        self.window.set_default_size(
-            self.settings.get("window_width", 800),
-            self.settings.get("window_height", 600),
-        )
-        self.window.set_position(Gtk.WindowPosition.CENTER)
-        self.window.connect("delete-event", self.on_delete_event)
-        self.window.connect("destroy", Gtk.main_quit)
-        self.window.connect("configure-event", self.on_window_configure)
-
-        scrolled = Gtk.ScrolledWindow()
-        self.window.add(scrolled)
-
-        self.webview = WebKit2.WebView()
-        scrolled.add(self.webview)
-
-        ws = self.webview.get_settings()
-        ws.props.enable_javascript = True
-        ws.props.enable_developer_extras = True
-
-        self.ucm = self.webview.get_user_content_manager()
-        self.ucm.register_script_message_handler("deepsite")
-        self.ucm.connect("script-message-received::deepsite", self.on_message)
-
+    def run(self):
+        api = Api(self)
         index_path = "file://" + os.path.join(WEB_DIR, "index.html")
-        self.webview.load_uri(index_path)
+        self._window = webview.create_window(
+            "Amoxpohualistli — Speed Reader",
+            url=index_path,
+            js_api=api,
+            width=self.settings.get("window_width", 800),
+            height=self.settings.get("window_height", 600),
+            min_size=(400, 300),
+            confirm_close=True,
+        )
+        self._window.events.closing += self._on_closing
+        debug = os.environ.get("AMOX_DEBUG", "").lower() in ("1", "true", "yes")
+        webview.start(private_mode=False, debug=debug)
 
-        self.window.show_all()
-
-    def on_window_configure(self, widget, event):
-        if not self.window.is_maximized():
-            w, h = self.window.get_size()
+    def _on_closing(self):
+        w, h = (
+            self._window.screen_size
+            if hasattr(self._window, "screen_size")
+            else (800, 600)
+        )
+        if not self._window.fullscreen:
+            w, h = self._window.size
             if w > 100 and h > 100:
                 self.settings["window_width"] = w
                 self.settings["window_height"] = h
-
-    def on_delete_event(self, widget, event):
         self.settings_handler.save(self.settings)
-        return False
 
-    def on_message(self, ucm, js_result):
-        val = js_result.get_js_value()
-        if val.is_string():
+    def send_js(self, data):
+        js = f"window.__bridge_cb({json.dumps(data)})"
+        if self._window:
             try:
-                msg = json.loads(val.to_string())
-                self.dispatch(msg)
+                self._window.evaluate_js(js)
             except Exception as e:
-                print(f"Bridge error: {e}")
+                print(f"send_js error: {e}")
 
     def dispatch(self, msg):
         msg_type = msg.get("type", "")
@@ -92,55 +112,22 @@ class AmoxpohualistliApp:
         if handler:
             handler(data)
 
-    def send_js(self, data):
-        js = f"window.__bridge_cb({json.dumps(data)})"
-        GLib.idle_add(
-            self.webview.evaluate_javascript, js, -1, None, None, None, None, None
+    def _pick_file(self, title, filters):
+        result = self._window.create_file_dialog(
+            webview.FileDialog.OPEN,
+            allow_multiple=False,
+            file_types=filters,
         )
+        if result and len(result) > 0:
+            return result[0]
+        return None
 
     def cmd_open_file(self, data):
-        dialog = Gtk.FileChooserDialog(
-            title="Open Document",
-            parent=self.window,
-            action=Gtk.FileChooserAction.OPEN,
-            buttons=("_Cancel", Gtk.ResponseType.CANCEL, "_Open", Gtk.ResponseType.OK),
-        )
-
-        filter_all = Gtk.FileFilter()
-        filter_all.set_name("All Supported Documents")
-        filter_all.add_mime_type("text/plain")
-        filter_all.add_pattern("*.txt")
-        filter_all.add_pattern("*.pdf")
-        filter_all.add_pattern("*.docx")
-        filter_all.add_pattern("*.epub")
-        filter_all.add_pattern("*.html")
-        filter_all.add_pattern("*.htm")
-        filter_all.add_pattern("*.rtf")
-        filter_all.add_pattern("*.odt")
-        filter_all.add_pattern("*.md")
-        dialog.add_filter(filter_all)
-
-        filter_txt = Gtk.FileFilter()
-        filter_txt.set_name("Text Files")
-        filter_txt.add_mime_type("text/plain")
-        filter_txt.add_pattern("*.txt")
-        filter_txt.add_pattern("*.md")
-        dialog.add_filter(filter_txt)
-
-        filter_pdf = Gtk.FileFilter()
-        filter_pdf.set_name("PDF Documents")
-        filter_pdf.add_mime_type("application/pdf")
-        filter_pdf.add_pattern("*.pdf")
-        dialog.add_filter(filter_pdf)
-
-        if dialog.run() == Gtk.ResponseType.OK:
-            path = dialog.get_filename()
-            dialog.destroy()
+        path = self._pick_file("Open Document", FILE_FILTERS)
+        if path and os.path.isfile(path):
             thread = threading.Thread(target=self._parse_thread, args=(path,))
             thread.daemon = True
             thread.start()
-        else:
-            dialog.destroy()
 
     def cmd_parse_path(self, data):
         path = data.get("path", "")
@@ -215,9 +202,8 @@ class AmoxpohualistliApp:
                     }
                 )
         except Exception as e:
-            GLib.idle_add(
-                self.send_js,
-                {"type": "error", "data": {"message": f"Failed to parse file: {e}"}},
+            self.send_js(
+                {"type": "error", "data": {"message": f"Failed to parse file: {e}"}}
             )
 
     def cmd_load_settings(self, data):
@@ -236,15 +222,7 @@ class AmoxpohualistliApp:
                 with open(path, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode()
                 ext = os.path.splitext(path)[1].lower()
-                mime_map = {
-                    ".mp3": "audio/mpeg",
-                    ".wav": "audio/wav",
-                    ".ogg": "audio/ogg",
-                    ".flac": "audio/flac",
-                    ".m4a": "audio/mp4",
-                    ".aac": "audio/aac",
-                }
-                mime = mime_map.get(ext, "audio/mpeg")
+                mime = MIME_MAP.get(ext, "audio/mpeg")
                 self.send_js(
                     {
                         "type": "audio_file_loaded",
@@ -259,31 +237,9 @@ class AmoxpohualistliApp:
                 self.send_js({"type": "error", "data": {"message": str(e)}})
 
     def cmd_pick_audio_file(self, data):
-        dialog = Gtk.FileChooserDialog(
-            title="Select Audio File",
-            parent=self.window,
-            action=Gtk.FileChooserAction.OPEN,
-            buttons=("_Cancel", Gtk.ResponseType.CANCEL, "_Open", Gtk.ResponseType.OK),
-        )
-        filter_audio = Gtk.FileFilter()
-        filter_audio.set_name("Audio Files")
-        filter_audio.add_mime_type("audio/mpeg")
-        filter_audio.add_mime_type("audio/wav")
-        filter_audio.add_mime_type("audio/ogg")
-        filter_audio.add_mime_type("audio/flac")
-        filter_audio.add_pattern("*.mp3")
-        filter_audio.add_pattern("*.wav")
-        filter_audio.add_pattern("*.ogg")
-        filter_audio.add_pattern("*.flac")
-        filter_audio.add_pattern("*.m4a")
-        dialog.add_filter(filter_audio)
-
-        if dialog.run() == Gtk.ResponseType.OK:
-            path = dialog.get_filename()
-            dialog.destroy()
+        path = self._pick_file("Select Audio File", AUDIO_FILTERS)
+        if path:
             self.cmd_load_audio_file({"path": path})
-        else:
-            dialog.destroy()
 
     def cmd_get_state(self, data):
         self.send_js(
@@ -331,9 +287,6 @@ class AmoxpohualistliApp:
                     },
                 }
             )
-
-    def run(self):
-        Gtk.main()
 
 
 if __name__ == "__main__":

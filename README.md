@@ -46,30 +46,47 @@ Aplicación de escritorio para mejorar la velocidad de lectura mediante el méto
 ## Requisitos
 
 - **Python 3.10+** (probado con 3.12)
-- **GTK 3** + **WebKit2GTK 4.1** (bibliotecas del sistema)
-- Sistema Linux con servidor gráfico X11 o Wayland
+- **Linux**: GTK 3 + WebKit2GTK 4.1 (bibliotecas del sistema)
+- **macOS**: macOS 11+ (Big Sur) — usa WKWebView nativo
+- **Windows**: Windows 10+ — usa Microsoft Edge WebView2
 
 ## Instalación
 
-### 1. Dependencias del sistema (Ubuntu/Debian/Mint)
+### 1. Dependencias del sistema
 
+**Linux (Ubuntu/Debian/Mint):**
 ```bash
 sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.1 python3-fitz
 ```
 
+**macOS:**
+```bash
+brew install python-tk
+# PyMuPDF (fitz) se instala vía pip en el paso 2
+```
+
+**Windows:**
+- Instala [Microsoft Edge WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703) (viene incluido en Windows 11)
+- Instala [Python 3.10+](https://www.python.org/downloads/)
+
 ### 2. Dependencias de Python
 
 ```bash
-pip3 install --user --break-system-packages \
-  python-docx ebooklib beautifulsoup4 lxml striprtf
+pip install -r requirements.txt
 ```
 
-> **Nota:** `--break-system-packages` es necesario en Ubuntu 24.04+. Si prefieres usar un entorno virtual:
+O manualmente:
+```bash
+pip install pywebview python-docx ebooklib beautifulsoup4 lxml striprtf
+```
+
+> **Linux (Ubuntu 24.04+):** si encuentras error `externally-managed-environment`, usa `pip install --user --break-system-packages` o un entorno virtual:
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install python-docx ebooklib beautifulsoup4 lxml striprtf
+pip install -r requirements.txt
+pip install pyMuPDF  # solo Linux: python3-fitz del sistema o pip
 ```
 
 ## Cómo ejecutar
@@ -179,9 +196,10 @@ Los archivos de audio cargados se almacenan en `~/.config/deepsite/audio/`.
 
 ```
 reading_training_vp/
-├── main.py          # Ventana GTK3, WebView, puente Python↔JavaScript
+├── main.py          # Ventana nativa + puente Python↔JavaScript (pywebview)
 ├── parser.py        # Parseo multi-formato + limpieza de texto + columnas
 ├── settings.py      # Persistencia de configuración, historial, caché
+├── requirements.txt # Dependencias pip
 ├── web/
 │   ├── index.html   # Interfaz de usuario (Tailwind CSS + Lucide icons)
 │   ├── styles.css   # Estilos personalizados, paleta de colores, animaciones
@@ -192,8 +210,8 @@ reading_training_vp/
 
 ### Comunicación Python↔JavaScript
 
-- **JavaScript → Python**: `window.webkit.messageHandlers.deepsite.postMessage(JSON.stringify({type, data}))`
-- **Python → JavaScript**: `webview.evaluate_javascript(script, -1, None, None, None, None, None)`
+- **JavaScript → Python**: `pywebview.api.handle_message(JSON.stringify({type, data}))` (vía pywebview JS bridge)
+- **Python → JavaScript**: `window.evaluate_js(f"window.__bridge_cb({json.dumps(data)})")`
 - Los mensajes son JSON con tipo (`type`) y datos (`data`). No se utiliza `eval()` ni ejecución de código arbitrario.
 
 ### Carga fragmentada de documentos
@@ -207,15 +225,14 @@ El frontend muestra un spinner de carga y actualiza el progreso a medida que lle
 
 ## Tecnologías
 
-- **Python 3** + **PyGObject** — Lógica de backend y ventana nativa
-- **GTK 3** + **WebKit2GTK 4.1** — Renderizado de la interfaz
+- **Python 3** + **pywebview** — Ventana nativa y puente JS (Linux: WebKit2GTK, macOS: WKWebView, Windows: Edge WebView2)
 - **HTML5 / CSS3 / JavaScript** — Interfaz de usuario (Tailwind CSS + Lucide icons locales)
 - **Web Audio API / HTML5 Audio** — Efectos de sonido y pista de audio continua
 - **PyMuPDF (fitz) / python-docx / ebooklib / BeautifulSoup / striprtf** — Parseo de documentos
 
 ## Seguridad
 
-La aplicación opera exclusivamente en el entorno local del usuario. No realiza conexiones de red salientes (los iconos Lucide están embebidos localmente, Tailwind se carga desde CDN pero es opcional).
+La aplicación opera exclusivamente en el entorno local del usuario. No realiza conexiones de red salientes (los iconos Lucide están embebidos localmente). Tailwind se carga desde CDN; para uso sin conexión, descárgalo y cámbialo a referencia local.
 
 ### Medidas implementadas
 

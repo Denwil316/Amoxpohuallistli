@@ -1,9 +1,21 @@
 import json
 import os
+import sys
 import time
 import hashlib
 
-CONFIG_DIR = os.path.expanduser("~/.config/deepsite")
+
+def _get_config_dir():
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA", os.path.expanduser("~"))
+    elif sys.platform == "darwin":
+        base = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    else:
+        base = os.path.expanduser("~/.config")
+    return os.path.join(base, "deepsite")
+
+
+CONFIG_DIR = _get_config_dir()
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 AUDIO_DIR = os.path.join(CONFIG_DIR, "audio")
 CACHE_DIR = os.path.join(CONFIG_DIR, "cache")

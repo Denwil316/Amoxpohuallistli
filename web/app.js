@@ -1,7 +1,9 @@
 class PythonBridge {
   constructor() { this.handlers = {}; }
   send(type, data = {}) {
-    window.webkit.messageHandlers.deepsite.postMessage(JSON.stringify({ type, data }));
+    if (window.pywebview) {
+      pywebview.api.handle_message(JSON.stringify({ type, data }));
+    }
   }
   on(type, handler) { this.handlers[type] = handler; }
   receive(msg) {
