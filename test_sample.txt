@@ -1,0 +1,17 @@
+Amoxpohualistli Speed Reader — Test Document
+
+Welcome to Amoxpohualistli, your personal speed reading trainer.
+
+This application uses the RSVP method, which stands for Rapid Serial Visual Presentation.
+With this technique, words are displayed one at a time at a fixed position on your screen.
+
+This allows your eyes to stay focused on a single point rather than moving across the page.
+The result is faster reading with less eye strain.
+
+To get started, simply press the play button or press the Space key.
+You can adjust the speed using the WPM controls or the arrow keys.
+
+The highlighted letter helps your eye anchor to the optimal reading position.
+Try different highlight positions to find what works best for you.
+
+Happy reading!

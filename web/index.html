@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amoxpohualistli — Speed Reader</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="lucide.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="min-h-screen" style="background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%)">
+<div id="app" class="flex flex-col min-h-screen">
+
+  <!-- Header / Toolbar -->
+    <header class="bg-white shadow-md px-2 sm:px-4 py-3 flex items-center justify-between gap-2">
+    <div class="flex items-center gap-1 sm:gap-3 min-w-0 shrink">
+      <i data-lucide="book-open" class="text-blue-500 size-5 sm:size-6 shrink-0"></i>
+      <h1 class="text-sm sm:text-lg font-bold text-gray-800 truncate">Amoxpohualistli</h1>
+      <span id="fileInfo" class="text-xs sm:text-sm text-gray-400 ml-1 sm:ml-2 max-w-[60px] sm:max-w-[200px] truncate">No file loaded</span>
+    </div>
+    <nav class="flex gap-1 sm:gap-2 shrink-0 flex-wrap justify-end">
+      <button id="btnOpen" class="nav-btn flex items-center gap-0.5 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition" title="Open document (O)">
+        <i data-lucide="folder-open" class="size-3.5 sm:size-4"></i><span class="hidden sm:inline">Open</span>
+      </button>
+      <button id="btnUploadAudio" class="nav-btn flex items-center gap-0.5 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition" title="Upload audio file">
+        <i data-lucide="music" class="size-3.5 sm:size-4"></i><span class="hidden sm:inline">Audio</span>
+      </button>
+      <button id="btnDocViewer" class="nav-btn flex items-center gap-0.5 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition" title="Document viewer (D)">
+        <i data-lucide="file-text" class="size-3.5 sm:size-4"></i><span class="hidden sm:inline">Doc</span>
+      </button>
+      <button id="btnReset" class="nav-btn flex items-center gap-0.5 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition" title="Reset position (R)">
+        <i data-lucide="rotate-ccw" class="size-3.5 sm:size-4"></i>
+      </button>
+      <button id="btnSettings" class="nav-btn flex items-center gap-0.5 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition" title="Settings (S)">
+        <i data-lucide="settings" class="size-3.5 sm:size-4"></i>
+      </button>
+      <button id="btnHistory" class="nav-btn flex items-center gap-0.5 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition" title="Reading History">
+        <i data-lucide="clock" class="size-3.5 sm:size-4"></i>
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex flex-col p-4 gap-4">
+
+    <!-- Reading Monitor -->
+    <div class="flex-1 bg-white rounded-xl shadow-lg flex items-center justify-center relative overflow-hidden reading-monitor">
+      <div id="wordDisplay" class="relative text-center px-6 py-8 w-full">
+        <div id="orpIndicator" class="orp-indicator"></div>
+        <span id="wordText" class="word-text block">Open a document to start reading</span>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="grid grid-cols-5 gap-3">
+      <div class="stat-card rounded-lg shadow p-3 text-center">
+        <div class="stat-value text-lg font-bold" id="current-word-count">0</div>
+        <div class="stat-label text-xs mt-0.5">Words Read</div>
+      </div>
+      <div class="stat-card rounded-lg shadow p-3 text-center">
+        <div class="stat-value text-lg font-bold" id="session-words">0</div>
+        <div class="stat-label text-xs mt-0.5">Session Words</div>
+      </div>
+      <div class="stat-card rounded-lg shadow p-3 text-center">
+        <div class="stat-value text-lg font-bold" id="average-speed">0</div>
+        <div class="stat-label text-xs mt-0.5">Avg Speed</div>
+      </div>
+      <div class="stat-card rounded-lg shadow p-3 text-center">
+        <div class="stat-value text-lg font-bold" id="time-elapsed">00:00</div>
+        <div class="stat-label text-xs mt-0.5">Elapsed</div>
+      </div>
+      <div class="stat-card rounded-lg shadow p-3 text-center">
+        <div class="stat-value text-lg font-bold" id="time-remaining">0:00</div>
+        <div class="stat-label text-xs mt-0.5">Remaining</div>
+      </div>
+    </div>
+
+    <!-- Progress Bar (clickable) -->
+    <div id="progressBar" class="progress-bar">
+      <div id="progressFill" class="progress-fill" style="width:0%"></div>
+    </div>
+    <div class="flex justify-between text-xs text-gray-400 -mt-2">
+      <span id="progress-text">0%</span>
+      <span id="progress-total">0 / 0</span>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-white rounded-xl shadow-lg p-4">
+      <div class="flex items-center justify-between gap-4 flex-wrap">
+        <div class="flex items-center gap-1">
+          <button id="btnSkipBack" class="ctrl-btn" title="Skip back 10 words"><i data-lucide="skip-back" class="size-5"></i></button>
+          <button id="btnPrev" class="ctrl-btn" title="Previous word"><i data-lucide="chevron-left" class="size-5"></i></button>
+          <button id="btnPlay" class="ctrl-btn play-btn" title="Play/Pause (Space)"><i data-lucide="play" class="size-6"></i></button>
+          <button id="btnNext" class="ctrl-btn" title="Next word"><i data-lucide="chevron-right" class="size-5"></i></button>
+          <button id="btnSkipFwd" class="ctrl-btn" title="Skip forward 10 words"><i data-lucide="skip-forward" class="size-5"></i></button>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="btnSpeedDown" class="ctrl-btn sm" title="Speed down">−</button>
+          <div class="text-center min-w-[60px]">
+            <div id="speedValue" class="text-lg font-bold text-gray-700">300</div>
+            <div class="text-[10px] text-gray-400 uppercase tracking-wide">WPM</div>
+          </div>
+          <button id="btnSpeedUp" class="ctrl-btn sm" title="Speed up">+</button>
+          <div class="hidden md:block">
+            <input type="range" id="speedSlider" min="50" max="2000" value="300" step="10" class="speed-slider">
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnResetSession" class="ctrl-btn sm text-orange-500 border-orange-200 hover:border-orange-400 hover:text-orange-600" title="Reset session stats (keep position)">↺</button>
+          <span id="wordCounter" class="text-sm text-gray-500 font-medium">0 / 0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audio Track Bar -->
+    <div id="audioTrackBar" class="hidden bg-white rounded-xl shadow-lg px-4 py-2">
+      <div class="flex items-center gap-2">
+        <button id="btnAudioPlay" class="ctrl-btn" title="Play/Pause audio track">
+          <i data-lucide="play" class="size-4"></i>
+        </button>
+        <button id="btnAudioRewind" class="ctrl-btn sm" title="Rewind 10s">
+          <i data-lucide="rewind" class="size-3.5"></i>
+        </button>
+        <button id="btnAudioForward" class="ctrl-btn sm" title="Forward 10s">
+          <i data-lucide="fast-forward" class="size-3.5"></i>
+        </button>
+        <span id="audioTrackName" class="text-sm text-gray-600 truncate min-w-0" style="max-width:120px">No audio</span>
+        <span id="audioTrackTime" class="text-xs text-gray-400 shrink-0">00:00 / 00:00</span>
+        <input type="range" id="audioTrackVolume" min="0" max="100" value="80" class="audio-volume-slider shrink-0" style="width:50px">
+        <button id="btnAudioStop" class="ctrl-btn sm" title="Stop audio track">
+          <i data-lucide="square" class="size-3"></i>
+        </button>
+      </div>
+    </div>
+    <input type="file" id="audioTrackInput" accept="audio/*" class="hidden">
+
+  </main>
+
+  <!-- Settings Overlay -->
+  <div id="settingsOverlay" class="overlay hidden">
+    <div id="settingsPanel" class="slide-panel right">
+      <div class="panel-header">
+        <h2>Settings</h2>
+        <button id="btnCloseSettings" class="close-btn">&times;</button>
+      </div>
+      <div class="panel-body">
+        <section class="settings-section">
+          <h3>Highlight</h3>
+          <div class="setting-row">
+            <label>ORP auto-highlight</label>
+            <label class="toggle"><input type="checkbox" id="orpEnabled" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="setting-row hl-manual">
+            <label>Start position</label>
+            <input type="range" id="hlStart" min="0" max="5" value="0" class="slider">
+            <span id="hlStartVal">0</span>
+          </div>
+          <div class="setting-row hl-manual">
+            <label>Length (1-3)</label>
+            <input type="range" id="hlLength" min="1" max="3" value="1" class="slider">
+            <span id="hlLengthVal">1</span>
+          </div>
+          <div class="setting-row hl-manual">
+            <label>Bold Letter</label>
+            <select id="boldOption" class="sel">
+              <option value="center">Center nearest</option>
+              <option value="beginning">First letter</option>
+              <option value="end">Last letter</option>
+              <option value="middle">Middle letter</option>
+              <option value="random">Random letter</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Speed</h3>
+          <div class="setting-row">
+            <label>Words per minute</label>
+            <input type="range" id="speedSetting" min="50" max="2000" value="300" step="10" class="slider">
+            <span id="speedSettingVal">300</span>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Pauses</h3>
+          <div class="setting-row">
+            <label>On punctuation</label>
+            <label class="toggle"><input type="checkbox" id="pauseOnPunctuation" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="setting-row">
+            <label>Pause multiplier</label>
+            <input type="range" id="punctuationPauseMultiplier" min="1" max="4" step="0.5" value="2" class="slider">
+            <span id="punctuationPauseMultiplierVal">2x</span>
+          </div>
+          <div class="setting-row">
+            <label>Long word slowdown</label>
+            <input type="range" id="wordLengthWPMMultiplier" min="0" max="50" step="1" value="5" class="slider">
+            <span id="wordLengthWPMMultiplierVal">5%</span>
+          </div>
+          <div class="setting-row">
+            <label>Pause every N words</label>
+            <input type="range" id="pauseAfterWords" min="0" max="50" step="5" value="0" class="slider">
+            <span id="pauseAfterWordsVal">Off</span>
+          </div>
+          <div class="setting-row">
+            <label>Pause duration</label>
+            <input type="range" id="pauseDurationSetting" min="100" max="2000" step="100" value="500" class="slider">
+            <span id="pauseDurationSettingVal">500ms</span>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Effects</h3>
+          <div class="setting-row">
+            <label>Word fade</label>
+            <label class="toggle"><input type="checkbox" id="fadeEnabled" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="setting-row">
+            <label>Fade duration</label>
+            <input type="range" id="fadeDurationSetting" min="50" max="300" step="25" value="150" class="slider">
+            <span id="fadeDurationSettingVal">150ms</span>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Display</h3>
+          <div class="setting-row">
+            <label>Context words</label>
+            <input type="range" id="frameWordCount" min="1" max="7" step="2" value="1" class="slider">
+            <span id="frameWordCountVal">1</span>
+          </div>
+          <div class="setting-row">
+            <label>ORP indicator</label>
+            <label class="toggle"><input type="checkbox" id="orpToggle" checked><span class="toggle-slider"></span></label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Appearance</h3>
+          <div class="setting-row">
+            <label>Font family</label>
+            <select id="fontFamily" class="sel">
+              <option value="Inter, system-ui, sans-serif">Inter</option>
+              <option value="system-ui, sans-serif">System UI</option>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="'Times New Roman', serif">Times New Roman</option>
+              <option value="Arial, sans-serif">Arial</option>
+              <option value="'Courier New', monospace">Courier New</option>
+              <option value="Verdana, sans-serif">Verdana</option>
+              <option value="'Open Sans', sans-serif">Open Sans</option>
+              <option value="'Roboto', sans-serif">Roboto</option>
+              <option value="'Merriweather', serif">Merriweather</option>
+              <option value="'Fira Sans', sans-serif">Fira Sans</option>
+              <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label>Font size</label>
+            <input type="range" id="fontSize" min="24" max="200" value="72" class="slider">
+            <span id="fontSizeVal">72px</span>
+          </div>
+          <div class="setting-row">
+            <label>Text color</label>
+            <input type="color" id="textColor" value="#2C3E50">
+          </div>
+          <div class="setting-row">
+            <label>Background</label>
+            <input type="color" id="bgColor" value="#ECF4E8">
+          </div>
+          <div class="setting-row">
+            <label>Accent color</label>
+            <input type="color" id="accentColor" value="#93BFC7">
+          </div>
+          <div class="setting-row">
+            <label>ORP indicator</label>
+            <label class="toggle"><input type="checkbox" id="orpToggle" checked><span class="toggle-slider"></span></label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Color Palettes</h3>
+          <div class="setting-row">
+            <label>Palette</label>
+            <select id="paletteSelect" class="sel"></select>
+            <button id="btnAddPalette" class="btn-icon" title="Add palette">+</button>
+            <button id="btnDeletePalette" class="btn-icon danger" title="Delete palette">−</button>
+          </div>
+          <div class="palette-editor" id="paletteEditor">
+            <div class="editor-row">
+              <label>Background</label>
+              <input type="color" id="editPalBg" value="#ECF4E8">
+            </div>
+            <div class="editor-row">
+              <label>Secondary</label>
+              <input type="color" id="editPalSecondary" value="#CBF3BB">
+            </div>
+            <div class="editor-row">
+              <label>Primary</label>
+              <input type="color" id="editPalPrimary" value="#ABE7B2">
+            </div>
+            <div class="editor-row">
+              <label>Accent</label>
+              <input type="color" id="editPalAccent" value="#93BFC7">
+            </div>
+            <div class="editor-row">
+              <label>Stat Card</label>
+              <input type="color" id="editPalStatBg" value="#FFFFFF">
+            </div>
+            <div class="editor-row">
+              <label>Stat Value</label>
+              <input type="color" id="editPalStatText" value="#2563EB">
+            </div>
+            <div class="editor-row">
+              <label>Stat Label</label>
+              <input type="color" id="editPalStatLabel" value="#6B7280">
+            </div>
+            <button id="btnSavePalette" class="btn-primary" style="margin-top:6px">Save Palette</button>
+          </div>
+          <div class="palette-preview" id="palettePreview"></div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Audio</h3>
+          <div class="setting-row">
+            <label>Enabled</label>
+            <label class="toggle"><input type="checkbox" id="soundEnabled" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="setting-row">
+            <label>Volume</label>
+            <input type="range" id="soundVolume" min="0" max="100" value="50" class="slider">
+            <span id="soundVolumeVal">50%</span>
+          </div>
+          <div class="setting-row">
+            <label>Tick sound</label>
+            <div class="audio-control">
+              <select id="soundTick" class="sel"><option value="">None</option></select>
+              <button class="btn-upload" data-target="soundTick">Upload</button>
+              <button class="btn-preview" data-target="soundTick">&#9654;</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label>Start sound</label>
+            <div class="audio-control">
+              <select id="soundStart" class="sel"><option value="">None</option></select>
+              <button class="btn-upload" data-target="soundStart">Upload</button>
+              <button class="btn-preview" data-target="soundStart">&#9654;</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label>End sound</label>
+            <div class="audio-control">
+              <select id="soundEnd" class="sel"><option value="">None</option></select>
+              <button class="btn-upload" data-target="soundEnd">Upload</button>
+              <button class="btn-preview" data-target="soundEnd">&#9654;</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Keyboard Shortcuts</h3>
+          <div id="shortcutsList"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Document Viewer Overlay -->
+  <div id="docViewerOverlay" class="overlay hidden">
+    <div id="docViewerPanel" class="slide-panel left" style="width:420px">
+      <div class="panel-header">
+        <h2>Document</h2>
+        <div class="flex items-center gap-2">
+          <span id="rangeInfo" class="text-xs text-gray-400"></span>
+          <button id="btnReadRange" class="btn-primary" style="width:auto;padding:4px 10px;font-size:11px">Read Selected</button>
+          <button id="btnReadAll" class="btn-secondary" style="width:auto;padding:4px 10px;font-size:11px">Read All</button>
+          <button id="btnCloseDocViewer" class="close-btn">&times;</button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <div id="docViewerContent" class="doc-viewer-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History Overlay -->
+  <div id="historyOverlay" class="overlay hidden">
+    <div id="historyPanel" class="slide-panel right" style="width:360px">
+      <div class="panel-header">
+        <h2>Reading History</h2>
+        <div class="flex items-center gap-2">
+          <button id="btnClearHistory" class="btn-secondary" style="padding:3px 8px;font-size:11px">Clear</button>
+          <button id="btnCloseHistory" class="close-btn">&times;</button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <div id="historyList" class="history-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shortcut Editor Modal -->
+  <div id="shortcutEditor" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Press new key for <span id="shortcutActionName"></span></h3>
+        <button class="close-btn" id="btnCloseShortcut">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Press the desired key combination...</p>
+        <div id="shortcutInput" class="shortcut-input">...</div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnClearShortcut" class="btn-secondary">Clear</button>
+        <button id="btnSaveShortcut" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  lucide.createIcons();
+</script>
+<script src="app.js"></script>
+</body>
+</html>
