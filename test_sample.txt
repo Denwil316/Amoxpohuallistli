@@ -1,17 +1,21 @@
-Amoxpohualistli Speed Reader — Test Document
+Amoxpohualistli
 
-Welcome to Amoxpohualistli, your personal speed reading trainer.
+This is Amoxpohualistli, your personal speed reading coach.
 
-This application uses the RSVP method, which stands for Rapid Serial Visual Presentation.
-With this technique, words are displayed one at a time at a fixed position on your screen.
+This app uses the RSVP method, which stands for “Rapid Serial Visual Presentation.”
+With this technique, words are displayed one at a time in a fixed position on the screen.
 
-This allows your eyes to stay focused on a single point rather than moving across the page.
+This allows your eyes to stay focused on a single point instead of moving across the page.
 The result is faster reading with less eye strain.
 
-To get started, simply press the play button or press the Space key.
+Today, concentration and attention have been declining in society due to excessive use of social media. One possible cause could be the learning curve inherent in any mental development, which is often obscured by a personal sense of inadequacy or lack of ability.
+
+This app aims to help improve reading speed and comprehension—not only to enhance mental agility but also to develop human information processing speed in an accessible way. It is based in the principle that the knowledge of the self is an universal knowledge and those who have achieved personal proven psychological techniques of improvement must shared it and make them as much accesible as it can, and to look for the preservation of those that were forgotten and did make changes in the beliefs of humanity.
+
+To get started, just press the play button or the Space bar.
 You can adjust the speed using the WPM controls or the arrow keys.
 
-The highlighted letter helps your eye anchor to the optimal reading position.
-Try different highlight positions to find what works best for you.
+The highlighted text helps your eyes focus on the optimal reading position.
+Try different highlight positions to find the one that works best for you.
 
 Happy reading!
