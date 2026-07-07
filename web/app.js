@@ -410,6 +410,9 @@ class App {
     this.compactView = false;
     this.startMarker = -1;
     this._startMarkerConsumed = false;
+    this.page_starts = null;
+    this._pageView = false;
+    this._pageThumbnails = {};
 
     this.cache = {};
     this.cacheEl = (id) => this.cache[id] || (this.cache[id] = document.getElementById(id));
@@ -447,10 +450,14 @@ class App {
     this.bridge.on('full_text_loaded', (d) => {
       this.fullText = d.full_text || '';
       this.wordOffsets = d.word_offsets || [];
+      this.page_starts = d.page_starts || null;
       this.renderDocumentViewer();
       this.updateDocViewerHighlight(this.rsvp.idx);
       this.updateRangeInfo();
+      this.setupPageNavigator();
+      this.updatePageViewToggle();
     });
+    this.bridge.on('page_image', (d) => this.onPageImage(d));
   }
 
   initUI() {
@@ -474,6 +481,7 @@ class App {
     this.$('dvPageSlider').addEventListener('change', (e) => this.onPageSliderChange(e));
     this.$('btnStartMarker').addEventListener('click', () => this.setStartMarker());
     this.$('btnClearMarker').addEventListener('click', () => this.clearStartMarker());
+    this.$('btnPageViewToggle').addEventListener('click', () => this.togglePageView());
     this.$('btnHistory').addEventListener('click', () => this.toggleHistory());
     this.$('btnClearHistory').addEventListener('click', () => this.clearHistory());
     this.$('btnCloseHistory').addEventListener('click', () => this.closeHistory());
@@ -1091,6 +1099,13 @@ class App {
   }
 
   resetSession() {
+    if (this.rsvp.playing) {
+      this.rsvp.pause();
+      this.$('btnPlay').innerHTML = '<i data-lucide="play" class="size-6"></i>';
+      this.$('btnPlay').classList.remove('playing');
+      document.getElementById('app').classList.remove('focus-mode');
+      lucide.createIcons();
+    }
     this.sessionWords = 0;
     this.sessionStartTime = null;
     this._activeTime = 0;
@@ -1172,6 +1187,9 @@ class App {
     this.rangeEnd = -1;
     this.startMarker = -1;
     this._startMarkerConsumed = false;
+    this.page_starts = null;
+    this._pageView = false;
+    this._pageThumbnails = {};
     this.$('btnStartMarker').classList.remove('hidden');
     this.$('btnClearMarker').classList.add('hidden');
     this.rsvp.resetAccumulatedMs();
@@ -1197,6 +1215,7 @@ class App {
     this._wordCount = d.word_count || this.rsvp.words.length;
     this.fullText = d.full_text || this.fullText || '';
     this.wordOffsets = d.word_offsets || this.wordOffsets || [];
+    this.page_starts = d.page_starts || null;
     this.rangeStart = -1;
     this.rangeEnd = -1;
     this.startMarker = -1;
@@ -1235,6 +1254,7 @@ class App {
     if (this.rsvp.words.length) this.audio.playStart();
     this.bridge.send('get_history');
     lucide.createIcons();
+    this.updatePageViewToggle();
   }
 
   updateHighlight() {
@@ -1704,6 +1724,21 @@ class App {
     }
 
     this._updateMarkerHighlight(container);
+    this._updatePageThumbActive(idx);
+  }
+
+  _updatePageThumbActive(idx) {
+    const container = this.$('docViewerPages');
+    if (!container || container.classList.contains('hidden')) return;
+    container.querySelectorAll('.page-thumb.active').forEach(el => el.classList.remove('active'));
+    if (!this.page_starts || idx < 0) return;
+    for (let i = this.page_starts.length - 1; i >= 0; i--) {
+      if (idx >= this.page_starts[i]) {
+        const el = container.querySelector(`.page-thumb[data-page="${i}"]`);
+        if (el) el.classList.add('active');
+        break;
+      }
+    }
   }
 
   _updateMarkerHighlight(container) {
@@ -1831,6 +1866,98 @@ class App {
     this.$('btnStartMarker').classList.remove('hidden');
     this.$('btnClearMarker').classList.add('hidden');
     this.updateDocViewerHighlight(this.rsvp.idx);
+  }
+
+  updatePageViewToggle() {
+    const btn = this.$('btnPageViewToggle');
+    if (this.page_starts && this.page_starts.length > 0) {
+      btn.classList.remove('hidden');
+    } else {
+      btn.classList.add('hidden');
+      if (this._pageView) this.togglePageView();
+    }
+  }
+
+  togglePageView() {
+    this._pageView = !this._pageView;
+    this.$('docViewerContent').classList.toggle('hidden', this._pageView);
+    this.$('docViewerPages').classList.toggle('hidden', !this._pageView);
+    this.$('dvPageSlider').disabled = this._pageView;
+    this.$('btnCompactToggle').disabled = this._pageView;
+    this.$('btnPageViewToggle').classList.toggle('active', this._pageView);
+    if (this._pageView) {
+      this.renderPageThumbnails();
+    }
+  }
+
+  renderPageThumbnails() {
+    const container = this.$('docViewerPages');
+    if (!this.page_starts || this.page_starts.length === 0) {
+      container.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:13px">No page data available.</p>';
+      return;
+    }
+    const numPages = this.page_starts.length;
+    let html = '';
+    for (let i = 0; i < numPages; i++) {
+      const isActive = this._isPageActive(i);
+      html += `<div class="page-thumb${isActive ? ' active' : ''}" data-page="${i}">
+        <div class="page-loading" id="page-loading-${i}">Loading page ${i + 1}...</div>
+        <span class="page-label">${i + 1}</span>
+      </div>`;
+    }
+    container.innerHTML = html;
+
+    container.querySelectorAll('.page-thumb').forEach(el => {
+      el.addEventListener('click', () => {
+        const page = parseInt(el.dataset.page);
+        this.seekToPage(page);
+      });
+    });
+
+    this._loadVisiblePageThumbnails();
+  }
+
+  _loadVisiblePageThumbnails() {
+    if (!this.page_starts) return;
+    for (let i = 0; i < this.page_starts.length; i++) {
+      const loadingEl = document.getElementById(`page-loading-${i}`);
+      if (loadingEl && !this._pageThumbnails[i]) {
+        this._pageThumbnails[i] = 'loading';
+        this.bridge.send('get_page_image', { page: i, width: 200 });
+      }
+    }
+  }
+
+  onPageImage(d) {
+    const page = d.page;
+    this._pageThumbnails[page] = d.content;
+    const loadingEl = document.getElementById(`page-loading-${page}`);
+    if (loadingEl) {
+      const img = document.createElement('img');
+      img.src = `data:image/png;base64,${d.content}`;
+      img.alt = `Page ${page + 1}`;
+      img.loading = 'lazy';
+      loadingEl.parentNode.replaceChild(img, loadingEl);
+    }
+  }
+
+  _isPageActive(pageIdx) {
+    if (!this.page_starts || pageIdx >= this.page_starts.length) return false;
+    const start = this.page_starts[pageIdx];
+    const end = pageIdx + 1 < this.page_starts.length ? this.page_starts[pageIdx + 1] : this.rsvp.words.length;
+    return this.rsvp.idx >= start && this.rsvp.idx < end;
+  }
+
+  seekToPage(pageIdx) {
+    if (!this.page_starts || pageIdx >= this.page_starts.length) return;
+    const wordIdx = this.page_starts[pageIdx];
+    this.rsvp.seek(wordIdx);
+    if (this._pageView) {
+      this.renderPageThumbnails();
+      const el = this.$('docViewerPages').querySelector(`.page-thumb[data-page="${pageIdx}"]`);
+      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    this.updateDocViewerHighlight(wordIdx);
   }
 }
 

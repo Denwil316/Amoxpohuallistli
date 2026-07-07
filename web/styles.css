@@ -643,6 +643,56 @@ html, body {
   text-align: center;
 }
 
+/* Page thumbnails view */
+.doc-viewer-pages {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.doc-viewer-pages .page-thumb {
+  cursor: pointer;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+  background: #fff;
+  position: relative;
+}
+.doc-viewer-pages .page-thumb:hover {
+  border-color: #3b82f6;
+}
+.doc-viewer-pages .page-thumb.active {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
+}
+.doc-viewer-pages .page-thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.doc-viewer-pages .page-thumb .page-label {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.doc-viewer-pages .page-thumb .page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }

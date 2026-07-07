@@ -99,6 +99,28 @@ def tokenize_with_offsets(text):
     return words, offsets
 
 
+def extract_page_starts(path):
+    """Return list of word indices where each page starts, or None if not a PDF."""
+    import os
+    ext = os.path.splitext(path)[1].lower()
+    if ext != ".pdf":
+        return None
+    import fitz
+    doc = fitz.open(path)
+    page_starts = []
+    word_idx = 0
+    for page in doc:
+        raw = page.get_text()
+        if not raw.strip():
+            continue
+        cleaned = clean_text(raw)
+        count = len(re.findall(r"\S+", cleaned))
+        if count > 0:
+            page_starts.append(word_idx)
+            word_idx += count
+    return page_starts
+
+
 def parse_txt(path):
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         return f.read()

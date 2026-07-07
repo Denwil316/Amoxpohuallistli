@@ -6,7 +6,7 @@ import threading
 import base64
 import sys
 
-from parser import parse_file
+from parser import parse_file, extract_page_starts
 from settings import Settings
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -53,6 +53,7 @@ class AmoxpohualistliApp:
         self.current_words = []
         self.current_path = ""
         self.current_filename = ""
+        self.current_page_starts = None
         self._window = None
 
     def run(self):
@@ -107,6 +108,7 @@ class AmoxpohualistliApp:
             "update_history": self.cmd_update_history,
             "clear_history": self.cmd_clear_history,
             "get_full_text": self.cmd_get_full_text,
+            "get_page_image": self.cmd_get_page_image,
         }
         handler = handler_map.get(msg_type)
         if handler:
@@ -154,6 +156,7 @@ class AmoxpohualistliApp:
             self.current_word_offsets = word_offsets
             self.current_path = path
             self.current_filename = os.path.basename(path)
+            self.current_page_starts = extract_page_starts(path)
 
             CHUNK_SIZE = 5000
             if len(words) > CHUNK_SIZE:
@@ -179,6 +182,7 @@ class AmoxpohualistliApp:
                             "words": [],
                             "full_text": full_text,
                             "word_offsets": word_offsets,
+                            "page_starts": self.current_page_starts,
                             "filename": self.current_filename,
                             "path": path,
                             "word_count": len(words),
@@ -194,6 +198,7 @@ class AmoxpohualistliApp:
                             "words": words,
                             "full_text": full_text,
                             "word_offsets": word_offsets,
+                            "page_starts": self.current_page_starts,
                             "filename": self.current_filename,
                             "path": path,
                             "word_count": len(words),
@@ -249,6 +254,7 @@ class AmoxpohualistliApp:
                     "words": self.current_words,
                     "full_text": getattr(self, "current_full_text", ""),
                     "word_offsets": getattr(self, "current_word_offsets", []),
+                    "page_starts": self.current_page_starts,
                     "filename": self.current_filename,
                     "path": self.current_path,
                     "word_count": len(self.current_words),
@@ -284,9 +290,38 @@ class AmoxpohualistliApp:
                     "data": {
                         "full_text": getattr(self, "current_full_text", ""),
                         "word_offsets": getattr(self, "current_word_offsets", []),
+                        "page_starts": self.current_page_starts,
                     },
                 }
             )
+
+    def cmd_get_page_image(self, data):
+        page = data.get("page", 0)
+        width = data.get("width", 200)
+        path = self.current_path
+        if not path or not os.path.isfile(path):
+            return
+        ext = os.path.splitext(path)[1].lower()
+        if ext != ".pdf":
+            return
+        try:
+            import fitz
+            doc = fitz.open(path)
+            if page < 0 or page >= len(doc):
+                return
+            p = doc[page]
+            mat = fitz.Matrix(width / p.rect.width, width / p.rect.width)
+            pix = p.get_pixmap(matrix=mat)
+            img_b64 = base64.b64encode(pix.tobytes("png")).decode()
+            self.send_js({
+                "type": "page_image",
+                "data": {"page": page, "content": img_b64},
+            })
+        except Exception as e:
+            self.send_js({
+                "type": "error",
+                "data": {"message": f"Page render error: {e}"},
+            })
 
 
 if __name__ == "__main__":
