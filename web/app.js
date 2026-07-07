@@ -32,7 +32,7 @@ class RSVPEngine {
     this.orpEnabled = true;
     this.pauseOnPunctuation = true;
     this.punctuationPauseMultiplier = 2;
-    this.wordLengthWPMMultiplier = 5;
+    this.wordLengthWPMMultiplier = 8;
     this.pauseAfterWords = 0;
     this.pauseDuration = 500;
     this.fadeEnabled = true;
@@ -84,8 +84,8 @@ class RSVPEngine {
     if (!word) return 60000 / this.speed;
     let baseDelay = 60000 / this.speed;
 
-    if (this.wordLengthWPMMultiplier > 0 && word.length >= 12) {
-      baseDelay *= 1 + ((this.wordLengthWPMMultiplier / 100) * (word.length - 12));
+    if (this.wordLengthWPMMultiplier > 0 && word.length >= 10) {
+      baseDelay *= 1 + ((this.wordLengthWPMMultiplier / 100) * (word.length - 10));
     }
 
     if (this.pauseOnPunctuation) {
@@ -920,7 +920,7 @@ class App {
 
     this.rsvp.pauseOnPunctuation = s.pause_on_punctuation !== false;
     this.rsvp.punctuationPauseMultiplier = s.punctuation_pause_multiplier || 2;
-    this.rsvp.wordLengthWPMMultiplier = s.word_length_wpm_multiplier || 5;
+    this.rsvp.wordLengthWPMMultiplier = s.word_length_wpm_multiplier || 8;
     this.rsvp.pauseAfterWords = s.pause_after_words || 0;
     this.rsvp.pauseDuration = s.pause_duration || 500;
     this.rsvp.fadeEnabled = s.fade_enabled !== false;
@@ -1082,6 +1082,7 @@ class App {
   }
 
   resetPosition() {
+    this.rsvp.pause();
     this.rsvp.seek(0);
     this.$('btnPlay').innerHTML = '<i data-lucide="play" class="size-6"></i>';
     this.$('btnPlay').classList.remove('playing');
@@ -1993,9 +1994,13 @@ class App {
     const wordIdx = this.page_starts[pageIdx];
     this.rsvp.seek(wordIdx);
     if (this._pageView) {
-      this.renderPageThumbnails();
-      const el = this.$('docViewerPages').querySelector(`.page-thumb[data-page="${pageIdx}"]`);
-      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const pages = this.$('docViewerPages');
+      pages.querySelectorAll('.page-thumb.active').forEach(el => el.classList.remove('active'));
+      const el = pages.querySelector(`.page-thumb[data-page="${pageIdx}"]`);
+      if (el) {
+        el.classList.add('active');
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
     }
     this.updateDocViewerHighlight(wordIdx);
   }

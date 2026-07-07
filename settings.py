@@ -72,7 +72,7 @@ DEFAULT_SETTINGS = {
     "orp_enabled": True,
     "pause_on_punctuation": True,
     "punctuation_pause_multiplier": 2,
-    "word_length_wpm_multiplier": 5,
+    "word_length_wpm_multiplier": 8,
     "pause_after_words": 0,
     "pause_duration": 500,
     "fade_enabled": True,
