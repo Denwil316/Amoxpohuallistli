@@ -120,7 +120,7 @@ class Settings:
         return os.path.join(CACHE_DIR, Settings._path_hash(file_path) + ".json")
 
     @staticmethod
-    def save_parsed_cache(file_path, words, full_text, word_offsets):
+    def save_parsed_cache(file_path, words, full_text, word_offsets, page_starts=None):
         Settings.ensure_dir()
         cache = {
             "file_path": file_path,
@@ -128,6 +128,7 @@ class Settings:
             "words": words,
             "full_text": full_text,
             "word_offsets": word_offsets,
+            "page_starts": page_starts,
             "word_count": len(words),
             "cached_at": time.time(),
         }

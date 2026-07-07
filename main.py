@@ -148,10 +148,16 @@ class AmoxpohualistliApp:
                 full_text = cached["full_text"]
                 word_offsets = cached["word_offsets"]
                 page_starts = cached.get("page_starts")
+                if page_starts is None and path.lower().endswith(".pdf"):
+                    page_starts = self._recompute_page_starts(path)
+                    cached["page_starts"] = page_starts
+                    self.settings_handler.save_parsed_cache(
+                        path, words, full_text, word_offsets, page_starts
+                    )
             else:
                 words, full_text, word_offsets, page_starts = parse_file(path)
                 self.settings_handler.save_parsed_cache(
-                    path, words, full_text, word_offsets
+                    path, words, full_text, word_offsets, page_starts
                 )
 
             self.current_words = words
@@ -283,6 +289,14 @@ class AmoxpohualistliApp:
             percent_read=data.get("percent_read", 0),
         )
         self.send_js({"type": "history_list", "data": entries})
+
+    def _recompute_page_starts(self, path):
+        try:
+            from parser import _parse_pdf_pages
+            _, _, _, page_starts = _parse_pdf_pages(path)
+            return page_starts
+        except Exception:
+            return None
 
     def cmd_get_full_text(self, data):
         path = data.get("path", "")

@@ -1918,8 +1918,10 @@ class App {
     for (let i = 0; i < numPages; i++) {
       const isActive = this._isPageActive(i);
       html += `<div class="page-thumb${isActive ? ' active' : ''}" data-page="${i}">
-        <div class="page-loading" id="page-loading-${i}">Loading page ${i + 1}...</div>
-        <span class="page-label">${i + 1}</span>
+        <div class="page-placeholder" id="page-loading-${i}">
+          <div class="pl-spinner"></div>
+          <div class="pl-text">${i + 1}</div>
+        </div>
       </div>`;
     }
     container.innerHTML = html;
@@ -1962,13 +1964,18 @@ class App {
   onPageImage(d) {
     const page = d.page;
     this._pageThumbnails[page] = d.content;
-    const loadingEl = document.getElementById(`page-loading-${page}`);
-    if (loadingEl) {
+    const placeholder = document.getElementById(`page-loading-${page}`);
+    if (placeholder) {
+      const thumb = placeholder.parentNode;
       const img = document.createElement('img');
       img.src = `data:image/png;base64,${d.content}`;
       img.alt = `Page ${page + 1}`;
       img.loading = 'lazy';
-      loadingEl.parentNode.replaceChild(img, loadingEl);
+      placeholder.replaceWith(img);
+      const label = document.createElement('span');
+      label.className = 'page-label';
+      label.textContent = page + 1;
+      thumb.appendChild(label);
     }
     this._thumbLoading = false;
     this._processThumbQueue();
