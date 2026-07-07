@@ -271,10 +271,6 @@
             <label>Accent color</label>
             <input type="color" id="accentColor" value="#93BFC7">
           </div>
-          <div class="setting-row">
-            <label>ORP indicator</label>
-            <label class="toggle"><input type="checkbox" id="orpToggle" checked><span class="toggle-slider"></span></label>
-          </div>
         </section>
 
         <section class="settings-section">
@@ -369,12 +365,19 @@
     <div id="docViewerPanel" class="slide-panel left" style="width:420px">
       <div class="panel-header">
         <h2>Document</h2>
-        <div class="flex items-center gap-2">
-          <span id="rangeInfo" class="text-xs text-gray-400"></span>
-          <button id="btnReadRange" class="btn-primary" style="width:auto;padding:4px 10px;font-size:11px">Read Selected</button>
-          <button id="btnReadAll" class="btn-secondary" style="width:auto;padding:4px 10px;font-size:11px">Read All</button>
+        <div class="flex items-center gap-1 max-w-[58%]">
+          <span id="rangeInfo" class="text-xs text-gray-400 truncate"></span>
+          <button id="btnStartMarker" class="dv-btn" title="Set start marker here">📍</button>
+          <button id="btnClearMarker" class="dv-btn hidden" title="Clear start marker">✕</button>
+          <button id="btnReadRange" class="btn-primary" style="width:auto;padding:3px 7px;font-size:10px;white-space:nowrap">Read Selected</button>
+          <button id="btnReadAll" class="btn-secondary" style="width:auto;padding:3px 7px;font-size:10px">All</button>
           <button id="btnCloseDocViewer" class="close-btn">&times;</button>
         </div>
+      </div>
+      <div class="dv-nav-bar">
+        <button id="btnCompactToggle" class="dv-btn" title="Toggle compact view">⊞</button>
+        <span class="text-[10px] text-gray-400 shrink-0" id="dvPageInfo">1 / 1</span>
+        <input type="range" id="dvPageSlider" min="0" max="1" value="0" class="dv-page-slider">
       </div>
       <div class="panel-body" style="padding:0">
         <div id="docViewerContent" class="doc-viewer-content"></div>

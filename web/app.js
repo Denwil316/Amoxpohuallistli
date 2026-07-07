@@ -407,6 +407,10 @@ class App {
 
     this.history = [];
 
+    this.compactView = false;
+    this.startMarker = -1;
+    this._startMarkerConsumed = false;
+
     this.cache = {};
     this.cacheEl = (id) => this.cache[id] || (this.cache[id] = document.getElementById(id));
     this.debouncedSave = this._debounce(() => this.collectSettings(), 400);
@@ -465,6 +469,11 @@ class App {
     });
     this.$('btnReadRange').addEventListener('click', () => this.readSelectedRange());
     this.$('btnReadAll').addEventListener('click', () => this.clearReadRange());
+    this.$('btnCompactToggle').addEventListener('click', () => this.toggleCompactView());
+    this.$('dvPageSlider').addEventListener('input', (e) => this.onPageSliderInput(e));
+    this.$('dvPageSlider').addEventListener('change', (e) => this.onPageSliderChange(e));
+    this.$('btnStartMarker').addEventListener('click', () => this.setStartMarker());
+    this.$('btnClearMarker').addEventListener('click', () => this.clearStartMarker());
     this.$('btnHistory').addEventListener('click', () => this.toggleHistory());
     this.$('btnClearHistory').addEventListener('click', () => this.clearHistory());
     this.$('btnCloseHistory').addEventListener('click', () => this.closeHistory());
@@ -957,6 +966,10 @@ class App {
   }
 
   togglePlay() {
+    if (!this.rsvp.playing && this.startMarker >= 0 && this.rangeStart < 0 && !this._startMarkerConsumed) {
+      this.rsvp.seek(this.startMarker);
+      this._startMarkerConsumed = true;
+    }
     this.rsvp.toggle();
     const playing = this.rsvp.playing;
     this.$('btnPlay').innerHTML = playing ? '<i data-lucide="pause" class="size-6"></i>' : '<i data-lucide="play" class="size-6"></i>';
@@ -1157,6 +1170,10 @@ class App {
     this.wordOffsets = [];
     this.rangeStart = -1;
     this.rangeEnd = -1;
+    this.startMarker = -1;
+    this._startMarkerConsumed = false;
+    this.$('btnStartMarker').classList.remove('hidden');
+    this.$('btnClearMarker').classList.add('hidden');
     this.rsvp.resetAccumulatedMs();
     this.$('wordText').innerHTML = '<div class="loading-spinner"></div><div class="loading-text">Loading document...</div>';
     if (this.rsvp.words.length) this.audio.playStart();
@@ -1182,6 +1199,10 @@ class App {
     this.wordOffsets = d.word_offsets || this.wordOffsets || [];
     this.rangeStart = -1;
     this.rangeEnd = -1;
+    this.startMarker = -1;
+    this._startMarkerConsumed = false;
+    this.$('btnStartMarker').classList.remove('hidden');
+    this.$('btnClearMarker').classList.add('hidden');
 
     if (d.words && d.words.length) {
       this.rsvp.words = d.words;
@@ -1564,6 +1585,7 @@ class App {
       this.renderDocumentViewer();
       this.updateDocViewerHighlight(this.rsvp.idx);
       this.updateRangeInfo();
+      this.setupPageNavigator();
     }, 30);
   }
 
@@ -1680,6 +1702,24 @@ class App {
         break;
       }
     }
+
+    this._updateMarkerHighlight(container);
+  }
+
+  _updateMarkerHighlight(container) {
+    container.querySelectorAll('.dv-p.start-marker').forEach(el => el.classList.remove('start-marker'));
+    if (this.startMarker < 0 || this.startMarker >= this.wordOffsets.length) return;
+    const [mStart] = this.wordOffsets[this.startMarker];
+    const blocks = container.querySelectorAll('.dv-p');
+    for (const block of blocks) {
+      const pStart = parseInt(block.dataset.offset);
+      const pLen = (block.textContent || '').length;
+      const pEnd = pStart + pLen;
+      if (mStart >= pStart && mStart < pEnd) {
+        block.classList.add('start-marker');
+        break;
+      }
+    }
   }
 
   _updateRangeHighlight() {
@@ -1742,6 +1782,55 @@ class App {
     } else {
       btn.textContent = 'Read Selected';
     }
+  }
+
+  toggleCompactView() {
+    this.compactView = !this.compactView;
+    const content = this.$('docViewerContent');
+    content.classList.toggle('dv-compact', this.compactView);
+    this.$('btnCompactToggle').classList.toggle('active', this.compactView);
+  }
+
+  setupPageNavigator() {
+    const slider = this.$('dvPageSlider');
+    const paragraphs = this.$('docViewerContent').querySelectorAll('.dv-p');
+    const max = Math.max(0, paragraphs.length - 1);
+    slider.max = max;
+    slider.value = 0;
+    this.$('dvPageInfo').textContent = `1 / ${paragraphs.length}`;
+  }
+
+  onPageSliderInput(e) {
+    const idx = parseInt(e.target.value);
+    const paragraphs = this.$('docViewerContent').querySelectorAll('.dv-p');
+    if (idx >= 0 && idx < paragraphs.length) {
+      this.$('dvPageInfo').textContent = `${idx + 1} / ${paragraphs.length}`;
+    }
+  }
+
+  onPageSliderChange(e) {
+    const idx = parseInt(e.target.value);
+    const paragraphs = this.$('docViewerContent').querySelectorAll('.dv-p');
+    if (idx >= 0 && idx < paragraphs.length) {
+      paragraphs[idx].scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  }
+
+  setStartMarker() {
+    if (this._loadingChunks || this.rsvp.words.length === 0) return;
+    this.startMarker = this.rsvp.idx;
+    this._startMarkerConsumed = false;
+    this.$('btnStartMarker').classList.add('hidden');
+    this.$('btnClearMarker').classList.remove('hidden');
+    this.updateDocViewerHighlight(this.rsvp.idx);
+  }
+
+  clearStartMarker() {
+    this.startMarker = -1;
+    this._startMarkerConsumed = false;
+    this.$('btnStartMarker').classList.remove('hidden');
+    this.$('btnClearMarker').classList.add('hidden');
+    this.updateDocViewerHighlight(this.rsvp.idx);
   }
 }
 
