@@ -3,7 +3,15 @@ import re
 
 
 def parse_file(path):
+    """Returns (words, full_text, word_offsets, page_starts).
+    page_starts is a list of word indices (one per page with content)
+    for PDFs, or None for other formats.
+    """
     ext = os.path.splitext(path)[1].lower()
+
+    if ext == ".pdf":
+        return _parse_pdf_pages(path)
+
     parsers = {
         ".txt": parse_txt,
         ".pdf": parse_pdf,
@@ -22,7 +30,34 @@ def parse_file(path):
     raw = parser(path)
     text = clean_text(raw)
     words, offsets = tokenize_with_offsets(text)
-    return words, text, offsets
+    return words, text, offsets, None
+
+
+def _parse_pdf_pages(path):
+    """Parse PDF page by page, returning consistent words + page_starts."""
+    import fitz
+    doc = fitz.open(path)
+
+    per_page_cleaned = []
+    for page in doc:
+        raw = page.get_text()
+        if raw.strip():
+            cleaned = clean_text(raw)
+            if cleaned:
+                per_page_cleaned.append(cleaned)
+
+    full_text = "\n".join(per_page_cleaned)
+    words, offsets = tokenize_with_offsets(full_text)
+
+    page_starts = []
+    word_idx = 0
+    for cleaned in per_page_cleaned:
+        count = len(re.findall(r"\S+", cleaned))
+        if count > 0:
+            page_starts.append(word_idx)
+            word_idx += count
+
+    return words, full_text, offsets, page_starts
 
 
 def clean_text(text):

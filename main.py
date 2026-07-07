@@ -6,7 +6,7 @@ import threading
 import base64
 import sys
 
-from parser import parse_file, extract_page_starts
+from parser import parse_file
 from settings import Settings
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -147,8 +147,9 @@ class AmoxpohualistliApp:
                 words = cached["words"]
                 full_text = cached["full_text"]
                 word_offsets = cached["word_offsets"]
+                page_starts = cached.get("page_starts")
             else:
-                words, full_text, word_offsets = parse_file(path)
+                words, full_text, word_offsets, page_starts = parse_file(path)
                 self.settings_handler.save_parsed_cache(
                     path, words, full_text, word_offsets
                 )
@@ -156,9 +157,9 @@ class AmoxpohualistliApp:
             self.current_words = words
             self.current_full_text = full_text
             self.current_word_offsets = word_offsets
+            self.current_page_starts = page_starts
             self.current_path = path
             self.current_filename = os.path.basename(path)
-            self.current_page_starts = extract_page_starts(path)
 
             CHUNK_SIZE = 5000
             if len(words) > CHUNK_SIZE:
