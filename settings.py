@@ -55,7 +55,7 @@ DEFAULT_SETTINGS = {
     "window_width": 800,
     "window_height": 600,
     "keyboard_shortcuts": {
-        "play_pause": "Space",
+        "play_pause": "p",
         "speed_up": "ArrowUp",
         "speed_down": "ArrowDown",
         "seek_forward": "ArrowRight",

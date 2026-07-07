@@ -613,6 +613,11 @@ class App {
     });
 
     document.addEventListener('keydown', (e) => {
+      if (e.key === ' ' && !e.target.matches('input, select, textarea, button')) {
+        e.preventDefault();
+        this.togglePlay();
+        return;
+      }
       if (e.key === 'Escape' && document.getElementById('app').classList.contains('focus-mode')) {
         this.rsvp.pause();
         this.$('btnPlay').innerHTML = '<i data-lucide="play" class="size-6"></i>';
@@ -1623,30 +1628,49 @@ class App {
     if (content._scrollBound) return;
     content._scrollBound = true;
     content.addEventListener('scroll', () => {
-      const badge = this.$('docViewerPageBadge');
-      const blocks = content.querySelectorAll('.dv-p');
-      const mid = content.scrollTop + content.clientHeight / 2;
-      for (const block of blocks) {
-        const top = block.offsetTop;
-        const bot = top + block.offsetHeight;
-        if (mid >= top && mid < bot) {
-          const pStart = parseInt(block.dataset.offset);
-          let page = 1;
-          if (this.wordOffsets && this.page_starts) {
-            const wi = this._findWordAtOffset(pStart);
-            if (wi >= 0) {
-              for (let i = this.page_starts.length - 1; i >= 0; i--) {
-                if (wi >= this.page_starts[i]) { page = i + 1; break; }
-              }
-            }
-          }
-          badge.textContent = `Page ${page}`;
-          badge.classList.remove('hidden');
-          return;
-        }
-      }
-      badge.classList.add('hidden');
+      this._updatePageBadge();
     });
+  }
+
+  _updatePageBadge() {
+    const content = this.$('docViewerContent');
+    const badge = this.$('docViewerPageBadge');
+    if (!this.page_starts || !this.wordOffsets) { badge.classList.add('hidden'); return; }
+    const blocks = content.querySelectorAll('.dv-p');
+    const mid = content.scrollTop + content.clientHeight / 2;
+    for (const block of blocks) {
+      const top = block.offsetTop;
+      const bot = top + block.offsetHeight;
+      if (mid >= top && mid < bot) {
+        const page = this._getPageAtWord(this._findWordNearOffset(parseInt(block.dataset.offset)));
+        badge.textContent = `Page ${page}`;
+        badge.classList.remove('hidden');
+        return;
+      }
+    }
+    badge.classList.add('hidden');
+  }
+
+  _findWordNearOffset(charOffset) {
+    const off = this.wordOffsets;
+    if (!off || !off.length) return -1;
+    let lo = 0, hi = off.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (charOffset < off[mid][0]) hi = mid - 1;
+      else if (charOffset >= off[mid][1]) lo = mid + 1;
+      else return mid;
+    }
+    // No exact match — return nearest word
+    return Math.min(lo, off.length - 1);
+  }
+
+  _getPageAtWord(wordIdx) {
+    if (wordIdx < 0 || !this.page_starts) return 1;
+    for (let i = this.page_starts.length - 1; i >= 0; i--) {
+      if (wordIdx >= this.page_starts[i]) return i + 1;
+    }
+    return 1;
   }
 
   closeDocViewer() {
@@ -1664,32 +1688,12 @@ class App {
     let charOffset = 0;
     let html = '';
 
-    // Build page boundary character offsets
-    const pageCharOffsets = [];
-    if (this.page_starts && this.wordOffsets && this.wordOffsets.length > 0) {
-      for (let pi = 1; pi < this.page_starts.length; pi++) {
-        const wi = this.page_starts[pi];
-        if (wi < this.wordOffsets.length) {
-          pageCharOffsets.push(this.wordOffsets[wi][0]);
-        }
-      }
-    }
-    let pageBoundIdx = 0;
-
     for (let pi = 0; pi < paragraphs.length; pi++) {
       const para = paragraphs[pi];
       const trimmed = para.trim();
       if (!trimmed) {
         charOffset += para.length + 2;
         continue;
-      }
-
-      // Check for page break before this paragraph
-      const paraEnd = charOffset + trimmed.length;
-      while (pageBoundIdx < pageCharOffsets.length && pageCharOffsets[pageBoundIdx] < paraEnd) {
-        const pageNum = pageBoundIdx + 2; // +2 because page 1 starts at 0, page 2 is index 1
-        html += `<hr class="dv-page-break" data-page="${pageNum}"><span class="dv-page-num">— ${pageNum} —</span>`;
-        pageBoundIdx++;
       }
 
       const escaped = this.escHtml(trimmed);
@@ -1700,7 +1704,33 @@ class App {
     }
 
     container.innerHTML = html;
+    this._insertPageSeparators(container);
     this._setupDocViewerClick(container);
+  }
+
+  _insertPageSeparators(container) {
+    if (!this.page_starts || !this.wordOffsets || !this.wordOffsets.length) return;
+    const blocks = container.querySelectorAll('.dv-p');
+    // Build a map: block_index -> char_offset
+    for (let bi = blocks.length - 1; bi >= 0; bi--) {
+      const b = blocks[bi];
+      const pStart = parseInt(b.dataset.offset);
+      const pEnd = pStart + (b.textContent || '').length;
+      // Check each page boundary (skip first page, it starts at word 0)
+      for (let pi = this.page_starts.length - 1; pi >= 1; pi--) {
+        const wi = this.page_starts[pi];
+        if (wi >= this.wordOffsets.length) continue;
+        const pageChar = this.wordOffsets[wi][0];
+        if (pageChar >= pStart && pageChar < pEnd) {
+          // Insert page separator BEFORE this block
+          const sep = document.createElement('div');
+          sep.innerHTML = `<hr class="dv-page-break"><div class="dv-page-num">— ${pi + 1} —</div>`;
+          b.parentNode.insertBefore(sep.firstElementChild, b);
+          b.parentNode.insertBefore(sep.lastElementChild, b);
+          break;
+        }
+      }
+    }
   }
 
   _findWordAtOffset(charOffset) {
@@ -1778,29 +1808,42 @@ class App {
 
   updateDocViewerHighlight(idx) {
     const container = this.$('docViewerContent');
+    if (!container) return;
     container.querySelectorAll('.dv-p.active').forEach(el => el.classList.remove('active'));
 
-    if (idx < 0 || idx >= this.wordOffsets.length) return;
-    const [wStart] = this.wordOffsets[idx];
-
-    const blocks = container.querySelectorAll('.dv-p');
-    for (const block of blocks) {
-      const pStart = parseInt(block.dataset.offset);
-      const pLen = (block.textContent || '').length;
-      const pEnd = pStart + pLen;
-      if (wStart >= pStart && wStart < pEnd) {
-        block.classList.add('active');
-        block.scrollIntoView({ block: 'start', behavior: 'smooth' });
-        break;
+    if (idx >= 0 && idx < this.wordOffsets.length) {
+      const [wStart] = this.wordOffsets[idx];
+      const blocks = container.querySelectorAll('.dv-p');
+      for (const block of blocks) {
+        const pStart = parseInt(block.dataset.offset);
+        const pLen = (block.textContent || '').length;
+        const pEnd = pStart + pLen;
+        if (wStart >= pStart && wStart < pEnd) {
+          block.classList.add('active');
+          block.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          break;
+        }
       }
     }
 
     this._updateMarkerHighlight(container);
+    this._updatePageBadge();
   }
 
   _updateMarkerHighlight(container) {
-    container.querySelectorAll('.start-marker-word').forEach(el => el.remove());
+    if (!container) return;
+    // Clean up previous markers: find and remove the marker span
+    const oldMark = container.querySelector('.start-marker-word');
+    if (oldMark) {
+      const parent = oldMark.parentNode;
+      if (parent) {
+        const txt = document.createTextNode(oldMark.textContent);
+        parent.replaceChild(txt, oldMark);
+        parent.normalize();
+      }
+    }
     container.querySelectorAll('.dv-p.start-marker').forEach(el => el.classList.remove('start-marker'));
+
     if (this.startMarker < 0 || this.startMarker >= this.wordOffsets.length) return;
     const [mStart, mEnd] = this.wordOffsets[this.startMarker];
     const blocks = container.querySelectorAll('.dv-p');
@@ -1810,13 +1853,11 @@ class App {
       const pEnd = pStart + pLen;
       if (mStart >= pStart && mStart < pEnd) {
         block.classList.add('start-marker');
-        // Find word position within paragraph text
-        const wordOffset = mStart - pStart - (block.textContent.length - pLen);
-        const wordLen = mEnd - mStart;
-        if (wordOffset >= 0 && wordOffset + wordLen <= block.textContent.length) {
-          const before = block.textContent.slice(0, wordOffset);
-          const word = block.textContent.slice(wordOffset, wordOffset + wordLen);
-          const after = block.textContent.slice(wordOffset + wordLen);
+        const charInBlock = mStart - pStart;
+        if (charInBlock >= 0 && charInBlock + (mEnd - mStart) <= block.textContent.length) {
+          const before = block.textContent.slice(0, charInBlock);
+          const word = block.textContent.slice(charInBlock, charInBlock + (mEnd - mStart));
+          const after = block.textContent.slice(charInBlock + (mEnd - mStart));
           block.innerHTML = `${this.escHtml(before)}<span class="start-marker-word">${this.escHtml(word)}</span>${this.escHtml(after)}`;
         }
         break;

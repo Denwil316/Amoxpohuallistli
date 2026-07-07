@@ -46,7 +46,7 @@ def _parse_pdf_pages(path):
             if cleaned:
                 per_page_cleaned.append(cleaned)
 
-    full_text = "\n".join(per_page_cleaned)
+    full_text = "\n\n".join(per_page_cleaned)
     words, offsets = tokenize_with_offsets(full_text)
 
     page_starts = []
