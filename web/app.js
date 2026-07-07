@@ -670,7 +670,9 @@ class App {
       this.$('progress-total').textContent = `${idx + 1} / ${total}`;
       this.$('wordCounter').textContent = `${idx + 1} / ${total}`;
 
-      this.sessionWords++;
+      if (this.rsvp.playing) {
+        this.sessionWords++;
+      }
       this.$('current-word-count').textContent = this.sessionWords;
       this.$('session-words').textContent = this.sessionWords;
       this.updateAvgSpeed();
@@ -1704,7 +1706,12 @@ class App {
         this.updateDocViewerHighlight(this.rsvp.idx);
         this.updateRangeInfo();
       } else {
+        this.resetSession();
         this.rsvp.seek(wi);
+        this.startMarker = wi;
+        this._startMarkerConsumed = false;
+        this.$('btnStartMarker').classList.add('hidden');
+        this.$('btnClearMarker').classList.remove('hidden');
         this.updateDocViewerHighlight(wi);
       }
     });
@@ -1992,7 +1999,12 @@ class App {
   seekToPage(pageIdx) {
     if (!this.page_starts || pageIdx >= this.page_starts.length) return;
     const wordIdx = this.page_starts[pageIdx];
+    this.resetSession();
     this.rsvp.seek(wordIdx);
+    this.startMarker = wordIdx;
+    this._startMarkerConsumed = false;
+    this.$('btnStartMarker').classList.add('hidden');
+    this.$('btnClearMarker').classList.remove('hidden');
     if (this._pageView) {
       const pages = this.$('docViewerPages');
       pages.querySelectorAll('.page-thumb.active').forEach(el => el.classList.remove('active'));
