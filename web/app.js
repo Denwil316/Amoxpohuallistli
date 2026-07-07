@@ -412,10 +412,6 @@ class App {
     this._startMarkerConsumed = false;
     this._loadingCount = 0;
     this.page_starts = null;
-    this._pageView = false;
-    this._pageImages = {};
-    this._pageDims = {};
-    this._pageBoxes = null;
     this._pageCount = 0;
 
     this.cache = {};
@@ -460,11 +456,7 @@ class App {
       this.updateDocViewerHighlight(this.rsvp.idx);
       this.updateRangeInfo();
       this.setupPageNavigator();
-      this.updatePageViewToggle();
     });
-    this.bridge.on('thumbnails_batch', (d) => this.onThumbnailsBatch(d));
-    this.bridge.on('thumbnails_done', (d) => this.onThumbnailsDone(d));
-    this.bridge.on('page_boxes', (d) => this.onPageBoxes(d));
   }
 
   initUI() {
@@ -488,7 +480,6 @@ class App {
     this.$('dvPageSlider').addEventListener('change', (e) => this.onPageSliderChange(e));
     this.$('btnStartMarker').addEventListener('click', () => this.setStartMarker());
     this.$('btnClearMarker').addEventListener('click', () => this.clearStartMarker());
-    this.$('btnPageViewToggle').addEventListener('click', () => this.togglePageView());
     this.$('btnHistory').addEventListener('click', () => this.toggleHistory());
     this.$('btnClearHistory').addEventListener('click', () => this.clearHistory());
     this.$('btnCloseHistory').addEventListener('click', () => this.closeHistory());
@@ -694,6 +685,7 @@ class App {
 
       if (idx > 0) this.audio.playTick();
       this.updateDocViewerHighlight(idx);
+      this.updatePageCounter();
     };
     this.rsvp.onProgress = (idx, total) => {
       const pct = total ? Math.round((idx / total) * 100) : 0;
@@ -1085,6 +1077,7 @@ class App {
       this.$('time-remaining').textContent = this.formatTimeRemaining(remaining, this.rsvp.speed);
     }
     this.updateDocViewerHighlight(this.rsvp.idx);
+    this.updatePageCounter();
   }
 
   resetPosition() {
@@ -1198,10 +1191,6 @@ class App {
     this.startMarker = -1;
     this._startMarkerConsumed = false;
     this.page_starts = null;
-    this._pageView = false;
-    this._pageImages = {};
-    this._pageDims = {};
-    this._pageBoxes = null;
     this._pageCount = 0;
     this.$('btnStartMarker').classList.remove('hidden');
     this.$('btnClearMarker').classList.add('hidden');
@@ -1270,7 +1259,7 @@ class App {
     this.hideLoading();
     this.bridge.send('get_history');
     lucide.createIcons();
-    this.updatePageViewToggle();
+    this.updatePageCounter();
   }
 
   updateHighlight() {
@@ -1767,21 +1756,6 @@ class App {
     }
 
     this._updateMarkerHighlight(container);
-    this._updatePageThumbActive(idx);
-  }
-
-  _updatePageThumbActive(idx) {
-    const container = this.$('docViewerPages');
-    if (!container || container.classList.contains('hidden')) return;
-    container.querySelectorAll('.page-thumb.active').forEach(el => el.classList.remove('active'));
-    if (!this.page_starts || idx < 0) return;
-    for (let i = this.page_starts.length - 1; i >= 0; i--) {
-      if (idx >= this.page_starts[i]) {
-        const el = container.querySelector(`.page-thumb[data-page="${i}"]`);
-        if (el) el.classList.add('active');
-        break;
-      }
-    }
   }
 
   _updateMarkerHighlight(container) {
@@ -1871,26 +1845,24 @@ class App {
 
   setupPageNavigator() {
     const slider = this.$('dvPageSlider');
-    const paragraphs = this.$('docViewerContent').querySelectorAll('.dv-p');
-    const max = Math.max(0, paragraphs.length - 1);
+    const pages = this.page_starts;
+    const max = pages ? Math.max(0, pages.length - 1) : 0;
     slider.max = max;
     slider.value = 0;
-    this.$('dvPageInfo').textContent = `1 / ${paragraphs.length}`;
+    this.updatePageCounter();
   }
 
   onPageSliderInput(e) {
     const idx = parseInt(e.target.value);
-    const paragraphs = this.$('docViewerContent').querySelectorAll('.dv-p');
-    if (idx >= 0 && idx < paragraphs.length) {
-      this.$('dvPageInfo').textContent = `${idx + 1} / ${paragraphs.length}`;
+    if (this.page_starts && idx >= 0 && idx < this.page_starts.length) {
+      this.$('dvPageInfo').textContent = `${idx + 1} / ${this.page_starts.length}`;
     }
   }
 
   onPageSliderChange(e) {
     const idx = parseInt(e.target.value);
-    const paragraphs = this.$('docViewerContent').querySelectorAll('.dv-p');
-    if (idx >= 0 && idx < paragraphs.length) {
-      paragraphs[idx].scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (this.page_starts && idx >= 0 && idx < this.page_starts.length) {
+      this.seekToPage(idx);
     }
   }
 
@@ -1923,152 +1895,6 @@ class App {
     }
   }
 
-  updatePageViewToggle() {
-    const btn = this.$('btnPageViewToggle');
-    if (this.page_starts && this.page_starts.length > 0) {
-      btn.classList.remove('hidden');
-    } else {
-      btn.classList.add('hidden');
-      if (this._pageView) this.togglePageView();
-    }
-  }
-
-  togglePageView() {
-    this._pageView = !this._pageView;
-    this.$('docViewerContent').classList.toggle('hidden', this._pageView);
-    this.$('docViewerPages').classList.toggle('hidden', !this._pageView);
-    this.$('dvPageSlider').disabled = this._pageView;
-    this.$('btnCompactToggle').disabled = this._pageView;
-    this.$('btnPageViewToggle').classList.toggle('active', this._pageView);
-    if (this._pageView) {
-      this.renderPageThumbnails();
-    }
-  }
-
-  renderPageThumbnails() {
-    const container = this.$('docViewerPages');
-    if (!this.page_starts || this.page_starts.length === 0) {
-      container.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:13px">No page data available.</p>';
-      return;
-    }
-    const numPages = this.page_starts.length;
-    let hasPending = false;
-
-    for (let i = 0; i < numPages; i++) {
-      const isActive = this._isPageActive(i);
-      const thumb = document.createElement('div');
-      thumb.className = `page-thumb${isActive ? ' active' : ''}`;
-      thumb.dataset.page = i;
-
-      if (this._pageImages[i]) {
-        const img = document.createElement('img');
-        img.src = `data:image/png;base64,${this._pageImages[i]}`;
-        img.alt = `Page ${i + 1}`;
-        img.loading = 'lazy';
-        thumb.appendChild(img);
-        const label = document.createElement('span');
-        label.className = 'page-label';
-        label.textContent = i + 1;
-        thumb.appendChild(label);
-      } else {
-        hasPending = true;
-        const ph = document.createElement('div');
-        ph.className = 'page-placeholder';
-        ph.id = `page-loading-${i}`;
-        ph.innerHTML = `<div class="pl-spinner"></div><div class="pl-text">${i + 1}</div>`;
-        thumb.appendChild(ph);
-      }
-
-      container.appendChild(thumb);
-    }
-
-    container.addEventListener('click', (e) => {
-      const pageThumb = e.target.closest('.page-thumb');
-      if (!pageThumb) return;
-      const page = parseInt(pageThumb.dataset.page);
-      const img = e.target.closest('img');
-      if (img && this._pageBoxes && this._pageBoxes[page]) {
-        const rect = img.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-        const scaleX = this._pageDims[page][0] / img.naturalWidth;
-        const scaleY = this._pageDims[page][1] / img.naturalHeight;
-        const pageX = clickX * scaleX;
-        const pageY = clickY * scaleY;
-        const wi = this._findWordAtPagePoint(page, pageX, pageY);
-        if (wi >= 0) {
-          this.seekToWordAtPage(page, wi);
-          return;
-        }
-      }
-      this.seekToPage(page);
-    });
-
-    if (hasPending) this.showLoading();
-  }
-
-  onThumbnailsBatch(d) {
-    const start = d.start_page;
-    const images = d.images || [];
-    const dims = d.dims || [];
-    for (let i = 0; i < images.length; i++) {
-      const pageNum = start + i;
-      this._pageImages[pageNum] = images[i];
-      if (dims[i]) this._pageDims[pageNum] = dims[i];
-      const placeholder = document.getElementById(`page-loading-${pageNum}`);
-      if (placeholder) {
-        const thumb = placeholder.parentNode;
-        const img = document.createElement('img');
-        img.src = `data:image/png;base64,${images[i]}`;
-        img.alt = `Page ${pageNum + 1}`;
-        img.loading = 'lazy';
-        placeholder.replaceWith(img);
-        const label = document.createElement('span');
-        label.className = 'page-label';
-        label.textContent = pageNum + 1;
-        thumb.appendChild(label);
-      }
-    }
-  }
-
-  onThumbnailsDone(d) {
-    this.hideLoading();
-  }
-
-  onPageBoxes(d) {
-    this._pageBoxes = d.boxes || null;
-  }
-
-  _findWordAtPagePoint(page, px, py) {
-    const boxes = this._pageBoxes && this._pageBoxes[page];
-    if (!boxes) return -1;
-    for (const b of boxes) {
-      if (px >= b[0] && px <= b[2] && py >= b[1] && py <= b[3]) {
-        return b[4];
-      }
-    }
-    return -1;
-  }
-
-  seekToWordAtPage(pageIdx, wordIdx) {
-    if (wordIdx < 0 || wordIdx >= this.rsvp.words.length) return;
-    this.resetSession();
-    this.rsvp.seek(wordIdx);
-    this.startMarker = wordIdx;
-    this._startMarkerConsumed = false;
-    this.$('btnStartMarker').classList.add('hidden');
-    this.$('btnClearMarker').classList.remove('hidden');
-    this.updateDocViewerHighlight(wordIdx);
-    this._updatePageThumbActive(wordIdx);
-  }
-
-  _isPageActive(pageIdx) {
-    if (!this.page_starts || pageIdx >= this.page_starts.length) return false;
-    const start = this.page_starts[pageIdx];
-    const end = pageIdx + 1 < this.page_starts.length ? this.page_starts[pageIdx + 1] : this.rsvp.words.length;
-    return this.rsvp.idx >= start && this.rsvp.idx < end;
-  }
-
   seekToPage(pageIdx) {
     if (!this.page_starts || pageIdx >= this.page_starts.length) return;
     const wordIdx = this.page_starts[pageIdx];
@@ -2078,16 +1904,24 @@ class App {
     this._startMarkerConsumed = false;
     this.$('btnStartMarker').classList.add('hidden');
     this.$('btnClearMarker').classList.remove('hidden');
-    if (this._pageView) {
-      const pages = this.$('docViewerPages');
-      pages.querySelectorAll('.page-thumb.active').forEach(el => el.classList.remove('active'));
-      const el = pages.querySelector(`.page-thumb[data-page="${pageIdx}"]`);
-      if (el) {
-        el.classList.add('active');
-        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    this.updateDocViewerHighlight(wordIdx);
+    this.updatePageCounter();
+  }
+
+  updatePageCounter() {
+    const idx = this.rsvp.idx;
+    let currentPage = 1;
+    let totalPages = 1;
+    if (this.page_starts && this.page_starts.length > 0) {
+      totalPages = this.page_starts.length;
+      for (let i = this.page_starts.length - 1; i >= 0; i--) {
+        if (idx >= this.page_starts[i]) {
+          currentPage = i + 1;
+          break;
+        }
       }
     }
-    this.updateDocViewerHighlight(wordIdx);
+    this.$('dvPageInfo').textContent = `${currentPage} / ${totalPages}`;
   }
 }
 

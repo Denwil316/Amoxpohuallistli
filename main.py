@@ -6,7 +6,7 @@ import threading
 import base64
 import sys
 
-from parser import parse_file, extract_pdf_word_boxes
+from parser import parse_file
 from settings import Settings
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -54,8 +54,6 @@ class AmoxpohualistliApp:
         self.current_path = ""
         self.current_filename = ""
         self.current_page_starts = None
-        self.current_page_dims = None
-        self.current_page_boxes = None
         self._window = None
 
     def run(self):
@@ -165,18 +163,8 @@ class AmoxpohualistliApp:
             self.current_full_text = full_text
             self.current_word_offsets = word_offsets
             self.current_page_starts = page_starts
-            self.current_page_dims = None
-            self.current_page_boxes = None
             self.current_path = path
             self.current_filename = os.path.basename(path)
-
-            # For PDFs, kick off thumbnail+box rendering in background
-            if page_starts and path.lower().endswith(".pdf"):
-                thread = threading.Thread(
-                    target=self._render_thumbnails_and_boxes, args=(path,)
-                )
-                thread.daemon = True
-                thread.start()
 
             CHUNK_SIZE = 5000
             if len(words) > CHUNK_SIZE:
@@ -327,72 +315,7 @@ class AmoxpohualistliApp:
                 }
             )
 
-    def _render_thumbnails_and_boxes(self, path):
-        try:
-            import fitz
-            doc = fitz.open(path)
 
-            ps = self.current_page_starts
-            if not ps:
-                doc.close()
-                return
-
-            boxes, dims = extract_pdf_word_boxes(path, ps, self.current_words)
-            self.current_page_boxes = boxes
-            self.current_page_dims = dims
-
-            THUMB_WIDTH = 120
-            BATCH = 15
-            thumb_batch = []
-            batch_dims = []
-            batch_start = 0
-            sent = 0
-
-            for page_num in range(len(ps)):
-                if page_num >= len(doc):
-                    break
-                page = doc[page_num]
-                pw = page.rect.width
-                mat = fitz.Matrix(THUMB_WIDTH / pw, THUMB_WIDTH / pw)
-                pix = page.get_pixmap(matrix=mat)
-                b64 = base64.b64encode(pix.tobytes("png")).decode()
-
-                thumb_batch.append(b64)
-                batch_dims.append([pw, page.rect.height])
-                sent += 1
-
-                if len(thumb_batch) >= BATCH or page_num == len(ps) - 1:
-                    self.send_js({
-                        "type": "thumbnails_batch",
-                        "data": {
-                            "start_page": batch_start,
-                            "images": thumb_batch,
-                            "dims": batch_dims,
-                            "total": len(ps),
-                        }
-                    })
-                    thumb_batch = []
-                    batch_dims = []
-                    batch_start = page_num + 1
-
-            doc.close()
-
-            self.send_js({
-                "type": "thumbnails_done",
-                "data": {"total": sent}
-            })
-
-            # Send word boxes for pixel-to-word mapping
-            if boxes:
-                self.send_js({
-                    "type": "page_boxes",
-                    "data": {"boxes": boxes}
-                })
-        except Exception as e:
-            self.send_js({
-                "type": "error",
-                "data": {"message": f"Thumbnail error: {e}"}
-            })
 
 
 if __name__ == "__main__":
