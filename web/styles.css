@@ -739,6 +739,23 @@ html, body {
   100% { transform: translateX(350%); }
 }
 
+/* Page separators in text view */
+.dv-page-break {
+  border: none;
+  border-top: 1px dashed #d1d5db;
+  margin: 12px 0 4px 0;
+  height: 0;
+}
+.dv-page-num {
+  display: block;
+  text-align: center;
+  font-size: 10px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
