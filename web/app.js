@@ -31,7 +31,8 @@ class RSVPEngine {
 
     this.orpEnabled = true;
     this.pauseOnPunctuation = true;
-    this.punctuationPauseMultiplier = 2;
+    this.punctuationPauseMultiplier = 3;
+    this.commaPauseMultiplier = 2;
     this.wordLengthWPMMultiplier = 8;
     this.pauseAfterWords = 0;
     this.pauseDuration = 500;
@@ -93,7 +94,7 @@ class RSVPEngine {
         return baseDelay * this.punctuationPauseMultiplier;
       }
       if (/[,]$/.test(word)) {
-        return baseDelay * 1.5;
+        return baseDelay * this.commaPauseMultiplier;
       }
     }
 
@@ -533,6 +534,10 @@ class App {
       this.rsvp.punctuationPauseMultiplier = parseFloat(e.target.value);
       this.$('punctuationPauseMultiplierVal').textContent = e.target.value + 'x';
     });
+    this.$('commaPauseMultiplier').addEventListener('input', (e) => {
+      this.rsvp.commaPauseMultiplier = parseFloat(e.target.value);
+      this.$('commaPauseMultiplierVal').textContent = e.target.value + 'x';
+    });
     this.$('wordLengthWPMMultiplier').addEventListener('input', (e) => {
       this.rsvp.wordLengthWPMMultiplier = parseInt(e.target.value);
       this.$('wordLengthWPMMultiplierVal').textContent = e.target.value + '%';
@@ -925,7 +930,8 @@ class App {
     }
 
     this.rsvp.pauseOnPunctuation = s.pause_on_punctuation !== false;
-    this.rsvp.punctuationPauseMultiplier = s.punctuation_pause_multiplier || 2;
+    this.rsvp.punctuationPauseMultiplier = s.punctuation_pause_multiplier || 3;
+    this.rsvp.commaPauseMultiplier = s.comma_pause_multiplier || 2;
     this.rsvp.wordLengthWPMMultiplier = s.word_length_wpm_multiplier || 8;
     this.rsvp.pauseAfterWords = s.pause_after_words || 0;
     this.rsvp.pauseDuration = s.pause_duration || 500;
@@ -935,9 +941,12 @@ class App {
 
     this.$('orpEnabled').checked = s.orp_enabled !== false;
     this.$('pauseOnPunctuation').checked = s.pause_on_punctuation !== false;
-    const ppm = s.punctuation_pause_multiplier || 2;
+    const ppm = s.punctuation_pause_multiplier || 3;
     this.$('punctuationPauseMultiplier').value = ppm;
     this.$('punctuationPauseMultiplierVal').textContent = ppm + 'x';
+    const cpm = s.comma_pause_multiplier || 2;
+    this.$('commaPauseMultiplier').value = cpm;
+    this.$('commaPauseMultiplierVal').textContent = cpm + 'x';
     const wpm = s.word_length_wpm_multiplier || 5;
     this.$('wordLengthWPMMultiplier').value = wpm;
     this.$('wordLengthWPMMultiplierVal').textContent = wpm + '%';
@@ -1017,8 +1026,8 @@ class App {
 
   saveHistory() {
     if (!this._currentPath || !this._wordCount) return;
-    const wordsRead = this.rsvp.idx;
-    const percentRead = this._wordCount > 0 ? (wordsRead / this._wordCount) * 100 : 0;
+    const globalPos = this.rsvp.idx;
+    const percentRead = this._wordCount > 0 ? (globalPos / this._wordCount) * 100 : 0;
     const totalMs = this.rsvp.getBaseAccumulatedMs();
     const elapsedMin = totalMs / 60000;
     const avgSpeed = elapsedMin > 0 ? Math.round(this.sessionWords / elapsedMin) : this.rsvp.speed;
@@ -1026,7 +1035,7 @@ class App {
       name: this._currentFilename,
       path: this._currentPath,
       total_words: this._wordCount,
-      words_read: wordsRead,
+      words_read: this.sessionWords,
       avg_speed: avgSpeed,
       percent_read: percentRead,
     });
@@ -1157,6 +1166,7 @@ class App {
     s.orp_enabled = this.$('orpEnabled').checked;
     s.pause_on_punctuation = this.$('pauseOnPunctuation').checked;
     s.punctuation_pause_multiplier = parseFloat(this.$('punctuationPauseMultiplier').value);
+    s.comma_pause_multiplier = parseFloat(this.$('commaPauseMultiplier').value);
     s.word_length_wpm_multiplier = parseInt(this.$('wordLengthWPMMultiplier').value);
     s.pause_after_words = parseInt(this.$('pauseAfterWords').value);
     s.pause_duration = parseInt(this.$('pauseDurationSetting').value);
@@ -1575,12 +1585,11 @@ class App {
       <div class="history-item" data-path="${this.escHtml(e.path || '')}">
         <div class="history-info">
           <div class="history-name">${this.escHtml(e.name || 'Unknown')}</div>
-          <div class="history-meta">
-            ${e.total_words || 0} words &middot;
-            ${e.words_read || 0} read &middot;
-            ${e.avg_speed || 0} wpm avg &middot;
-            ${e.percent_read || 0}%
-          </div>
+            <div class="history-meta">
+                ${e.words_read || 0} read today &middot;
+                ${e.avg_speed || 0} wpm avg &middot;
+                ${Math.round(e.percent_read || 0)}% of doc
+              </div>
           <div class="history-date">${e.last_date || ''}</div>
         </div>
       </div>
