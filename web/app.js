@@ -1654,6 +1654,12 @@ class App {
         const page = this._getPageAtWord(this._findWordNearOffset(parseInt(block.dataset.offset)));
         badge.textContent = `Page ${page}`;
         badge.classList.remove('hidden');
+        const slider = this.$('dvPageSlider');
+        const sliderMax = parseInt(slider.max);
+        if (sliderMax > 0 && page >= 1 && page <= sliderMax + 1) {
+          slider.value = page - 1;
+        }
+        this.$('dvPageInfo').textContent = `${page} / ${this.page_starts.length}`;
         return;
       }
     }
