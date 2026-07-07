@@ -422,6 +422,7 @@ class App {
     this.initUI();
     this.initRSVP();
     this.initShortcuts();
+    this.shortcuts.attach();
     this.initAudioTrack();
     this.loadSettings();
   }
@@ -620,6 +621,8 @@ class App {
         lucide.createIcons();
       }
     });
+
+
 
     this.$('btnResetSession').addEventListener('click', () => this.resetSession());
     this.$('btnCloseShortcut').addEventListener('click', () => this.closeShortcutEditor());
@@ -1611,7 +1614,39 @@ class App {
       this.updateDocViewerHighlight(this.rsvp.idx);
       this.updateRangeInfo();
       this.setupPageNavigator();
+      this._setupDocViewerScroll();
     }, 30);
+  }
+
+  _setupDocViewerScroll() {
+    const content = this.$('docViewerContent');
+    if (content._scrollBound) return;
+    content._scrollBound = true;
+    content.addEventListener('scroll', () => {
+      const badge = this.$('docViewerPageBadge');
+      const blocks = content.querySelectorAll('.dv-p');
+      const mid = content.scrollTop + content.clientHeight / 2;
+      for (const block of blocks) {
+        const top = block.offsetTop;
+        const bot = top + block.offsetHeight;
+        if (mid >= top && mid < bot) {
+          const pStart = parseInt(block.dataset.offset);
+          let page = 1;
+          if (this.wordOffsets && this.page_starts) {
+            const wi = this._findWordAtOffset(pStart);
+            if (wi >= 0) {
+              for (let i = this.page_starts.length - 1; i >= 0; i--) {
+                if (wi >= this.page_starts[i]) { page = i + 1; break; }
+              }
+            }
+          }
+          badge.textContent = `Page ${page}`;
+          badge.classList.remove('hidden');
+          return;
+        }
+      }
+      badge.classList.add('hidden');
+    });
   }
 
   closeDocViewer() {
@@ -1725,8 +1760,13 @@ class App {
         this.updateDocViewerHighlight(this.rsvp.idx);
         this.updateRangeInfo();
       } else {
-        this.resetSession();
+        this.rsvp.pause();
+        this.sessionWords = 0;
         this.rsvp.seek(wi);
+        this.sessionWords = 0;
+        this.$('current-word-count').textContent = '0';
+        this.$('session-words').textContent = '0';
+        this.$('average-speed').textContent = '0';
         this.startMarker = wi;
         this._startMarkerConsumed = false;
         this.$('btnStartMarker').classList.add('hidden');
@@ -1750,7 +1790,7 @@ class App {
       const pEnd = pStart + pLen;
       if (wStart >= pStart && wStart < pEnd) {
         block.classList.add('active');
-        block.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        block.scrollIntoView({ block: 'start', behavior: 'smooth' });
         break;
       }
     }
@@ -1759,9 +1799,10 @@ class App {
   }
 
   _updateMarkerHighlight(container) {
+    container.querySelectorAll('.start-marker-word').forEach(el => el.remove());
     container.querySelectorAll('.dv-p.start-marker').forEach(el => el.classList.remove('start-marker'));
     if (this.startMarker < 0 || this.startMarker >= this.wordOffsets.length) return;
-    const [mStart] = this.wordOffsets[this.startMarker];
+    const [mStart, mEnd] = this.wordOffsets[this.startMarker];
     const blocks = container.querySelectorAll('.dv-p');
     for (const block of blocks) {
       const pStart = parseInt(block.dataset.offset);
@@ -1769,6 +1810,15 @@ class App {
       const pEnd = pStart + pLen;
       if (mStart >= pStart && mStart < pEnd) {
         block.classList.add('start-marker');
+        // Find word position within paragraph text
+        const wordOffset = mStart - pStart - (block.textContent.length - pLen);
+        const wordLen = mEnd - mStart;
+        if (wordOffset >= 0 && wordOffset + wordLen <= block.textContent.length) {
+          const before = block.textContent.slice(0, wordOffset);
+          const word = block.textContent.slice(wordOffset, wordOffset + wordLen);
+          const after = block.textContent.slice(wordOffset + wordLen);
+          block.innerHTML = `${this.escHtml(before)}<span class="start-marker-word">${this.escHtml(word)}</span>${this.escHtml(after)}`;
+        }
         break;
       }
     }
