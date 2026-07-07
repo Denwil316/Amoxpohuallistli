@@ -73,16 +73,18 @@ class AmoxpohualistliApp:
         webview.start(private_mode=False, debug=debug)
 
     def _on_closing(self):
-        w, h = (
-            self._window.screen_size
-            if hasattr(self._window, "screen_size")
-            else (800, 600)
-        )
-        if not self._window.fullscreen:
-            w, h = self._window.size
-            if w > 100 and h > 100:
-                self.settings["window_width"] = w
-                self.settings["window_height"] = h
+        try:
+            fs = bool(self._window.fullscreen)
+        except Exception:
+            fs = False
+        if not fs:
+            try:
+                w, h = self._window.size
+                if w > 100 and h > 100:
+                    self.settings["window_width"] = w
+                    self.settings["window_height"] = h
+            except Exception:
+                pass
         self.settings_handler.save(self.settings)
 
     def send_js(self, data):

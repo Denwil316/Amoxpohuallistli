@@ -693,6 +693,29 @@ html, body {
   font-size: 12px;
 }
 
+/* Global loading bar */
+.global-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 9999;
+  overflow: hidden;
+}
+.global-loader-bar {
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, #3b82f6, #10b981, #3b82f6);
+  background-size: 200% 100%;
+  animation: loaderSlide 1.2s ease-in-out infinite;
+  border-radius: 0 2px 2px 0;
+}
+@keyframes loaderSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }

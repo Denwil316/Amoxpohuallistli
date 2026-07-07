@@ -410,9 +410,12 @@ class App {
     this.compactView = false;
     this.startMarker = -1;
     this._startMarkerConsumed = false;
+    this._loadingCount = 0;
     this.page_starts = null;
     this._pageView = false;
     this._pageThumbnails = {};
+    this._thumbQueue = [];
+    this._thumbLoading = false;
 
     this.cache = {};
     this.cacheEl = (id) => this.cache[id] || (this.cache[id] = document.getElementById(id));
@@ -1194,6 +1197,7 @@ class App {
     this.$('btnClearMarker').classList.add('hidden');
     this.rsvp.resetAccumulatedMs();
     this.$('wordText').innerHTML = '<div class="loading-spinner"></div><div class="loading-text">Loading document...</div>';
+    this.showLoading();
     if (this.rsvp.words.length) this.audio.playStart();
     lucide.createIcons();
   }
@@ -1252,6 +1256,7 @@ class App {
     this.rsvp.resetAccumulatedMs();
 
     if (this.rsvp.words.length) this.audio.playStart();
+    this.hideLoading();
     this.bridge.send('get_history');
     lucide.createIcons();
     this.updatePageViewToggle();
@@ -1868,6 +1873,18 @@ class App {
     this.updateDocViewerHighlight(this.rsvp.idx);
   }
 
+  showLoading() {
+    this._loadingCount++;
+    this.$('globalLoader').classList.remove('hidden');
+  }
+
+  hideLoading() {
+    this._loadingCount = Math.max(0, this._loadingCount - 1);
+    if (this._loadingCount === 0) {
+      this.$('globalLoader').classList.add('hidden');
+    }
+  }
+
   updatePageViewToggle() {
     const btn = this.$('btnPageViewToggle');
     if (this.page_starts && this.page_starts.length > 0) {
@@ -1920,12 +1937,26 @@ class App {
   _loadVisiblePageThumbnails() {
     if (!this.page_starts) return;
     for (let i = 0; i < this.page_starts.length; i++) {
-      const loadingEl = document.getElementById(`page-loading-${i}`);
-      if (loadingEl && !this._pageThumbnails[i]) {
+      if (!this._pageThumbnails[i]) {
         this._pageThumbnails[i] = 'loading';
-        this.bridge.send('get_page_image', { page: i, width: 200 });
+        this._thumbQueue.push(i);
       }
     }
+    if (!this._thumbLoading && this._thumbQueue.length > 0) {
+      this._thumbLoading = true;
+      this.showLoading();
+      this._processThumbQueue();
+    }
+  }
+
+  _processThumbQueue() {
+    if (this._thumbQueue.length === 0) {
+      this._thumbLoading = false;
+      this.hideLoading();
+      return;
+    }
+    const page = this._thumbQueue.shift();
+    this.bridge.send('get_page_image', { page, width: 200 });
   }
 
   onPageImage(d) {
@@ -1939,6 +1970,8 @@ class App {
       img.loading = 'lazy';
       loadingEl.parentNode.replaceChild(img, loadingEl);
     }
+    this._thumbLoading = false;
+    this._processThumbQueue();
   }
 
   _isPageActive(pageIdx) {
