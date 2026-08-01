@@ -89,6 +89,13 @@ class RSVPEngine {
       baseDelay *= 1 + ((this.wordLengthWPMMultiplier / 100) * (word.length - 10));
     }
 
+    // Safety net: compound words joined by long dashes that were not split
+    // by the parser (e.g. stale cache) get extra time per segment.
+    const dashParts = word.split(/[–—]/).filter(Boolean);
+    if (dashParts.length > 1) {
+      baseDelay *= Math.min(dashParts.length, 3);
+    }
+
     if (this.pauseOnPunctuation) {
       if (/[.!?;:]$/.test(word)) {
         return baseDelay * this.punctuationPauseMultiplier;
@@ -351,12 +358,14 @@ class ShortcutManager {
   attach() {
     if (this.bound) return;
     this.bound = (e) => {
+      if (e.target.matches('input, select, textarea')) return;
       const parts = [];
       if (e.ctrlKey) parts.push('ctrl');
       if (e.altKey) parts.push('alt');
       if (e.shiftKey) parts.push('shift');
       if (e.metaKey) parts.push('meta');
-      const key = e.key === ' ' ? 'space' : e.key.toLowerCase();
+      const rawKey = e.key === ' ' ? 'space' : e.key;
+      const key = rawKey.toLowerCase().replace('arrow', '');
       if (!['control', 'alt', 'shift', 'meta'].includes(key)) parts.push(key);
       const combo = parts.sort().join('+');
       const action = this.map[combo];
@@ -400,6 +409,7 @@ class App {
     this.wordOffsets = [];
     this.rangeStart = -1;
     this.rangeEnd = -1;
+    this._resumePosition = -1;
 
     this._currentFilename = '';
     this._currentPath = '';
@@ -411,6 +421,7 @@ class App {
     this.compactView = false;
     this.startMarker = -1;
     this._startMarkerConsumed = false;
+    this._lastActiveBlock = null;
     this._loadingCount = 0;
     this.page_starts = null;
     this._pageCount = 0;
@@ -447,7 +458,7 @@ class App {
     this.bridge.on('settings_saved', (d) => this.onSettingsLoaded(d));
     this.bridge.on('audio_file_loaded', (d) => this.onAudioFileLoaded(d));
     this.bridge.on('error', (d) => this.onError(d));
-    this.bridge.on('state', (d) => this.onFileLoaded(d));
+    this.bridge.on('state', (d) => this.onStateSynced(d));
     this.bridge.on('history_list', (d) => this.history = d || []);
     this.bridge.on('full_text_loaded', (d) => {
       this.fullText = d.full_text || '';
@@ -596,6 +607,11 @@ class App {
     this.$('btnAddPalette').addEventListener('click', () => this.addPalette());
     this.$('btnDeletePalette').addEventListener('click', () => this.deletePalette());
     this.$('btnSavePalette').addEventListener('click', () => this.savePalette());
+    this.$('btnConfirmPalette').addEventListener('click', () => this._confirmAddPalette());
+    this.$('btnCancelPalette').addEventListener('click', () => this.$('newPaletteRow').classList.add('hidden'));
+    this.$('newPaletteName').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); this._confirmAddPalette(); }
+    });
     this.$('soundEnabled').addEventListener('change', (e) => this.audio.setEnabled(e.target.checked));
     this.$('soundVolume').addEventListener('input', (e) => {
       const v = parseInt(e.target.value) / 100;
@@ -641,6 +657,7 @@ class App {
     document.addEventListener('keydown', (e) => {
       if (!this.$('shortcutEditor').classList.contains('hidden')) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         this.captureShortcut(e);
       }
     });
@@ -1038,6 +1055,7 @@ class App {
       words_read: this.sessionWords,
       avg_speed: avgSpeed,
       percent_read: percentRead,
+      position: globalPos,
     });
   }
 
@@ -1143,7 +1161,6 @@ class App {
     const opening = ov.classList.contains('hidden');
     if (!opening) this.collectSettings();
     ov.classList.toggle('hidden');
-    if (opening) this.bridge.send('get_state');
   }
 
   collectSettings() {
@@ -1179,11 +1196,11 @@ class App {
   onFileStart(d) {
     this._wordCount = d.word_count || 0;
     this._loadingChunks = true;
-    this.rsvp.loading = true;
     this._currentFilename = d.filename || '';
     this._currentPath = d.path || '';
     this.rsvp.words = [];
     this.rsvp.load([]);
+    this.rsvp.loading = true;
     this.$('fileInfo').textContent = d.filename || 'Unknown file';
     this.$('wordCounter').textContent = `0 / ${d.word_count}`;
     document.getElementById('app').classList.remove('focus-mode');
@@ -1208,6 +1225,7 @@ class App {
     this.rangeEnd = -1;
     this.startMarker = -1;
     this._startMarkerConsumed = false;
+    this._resumePosition = -1;
     this.page_starts = null;
     this._pageCount = 0;
     this.$('btnStartMarker').classList.remove('hidden');
@@ -1225,6 +1243,7 @@ class App {
     this.$('fileInfo').textContent = `${this._currentFilename} (loading ${Math.min(this.rsvp.words.length, this._wordCount)}/${this._wordCount})`;
     if (d.index === 0 && chunk.length > 0) {
       this.rsvp.load(this.rsvp.words);
+      this.rsvp.loading = true;
       this.renderWordDisplay();
       lucide.createIcons();
     }
@@ -1242,11 +1261,12 @@ class App {
     this.rangeEnd = -1;
     this.startMarker = -1;
     this._startMarkerConsumed = false;
+    this._lastActiveBlock = null;
     this.$('btnStartMarker').classList.remove('hidden');
     this.$('btnClearMarker').classList.add('hidden');
 
-    if (d.words && d.words.length) {
-      this.rsvp.words = d.words;
+    if (!d.load_complete) {
+      this.rsvp.words = d.words || [];
       this.rsvp.load(this.rsvp.words);
     }
     this._currentFilename = d.filename || this._currentFilename;
@@ -1276,8 +1296,25 @@ class App {
     if (this.rsvp.words.length) this.audio.playStart();
     this.hideLoading();
     this.bridge.send('get_history');
+
+    if (this._resumePosition >= 0 && this._resumePosition < this.rsvp.words.length) {
+      this.rsvp.seek(this._resumePosition);
+      this.renderWordDisplay();
+    }
+    this._resumePosition = -1;
+
     lucide.createIcons();
     this.updatePageCounter();
+  }
+
+  onStateSynced(d) {
+    this.fullText = d.full_text || this.fullText;
+    this.wordOffsets = d.word_offsets || this.wordOffsets;
+    this.page_starts = d.page_starts || this.page_starts;
+    this._pageCount = d.page_count || this._pageCount;
+    this._currentFilename = d.filename || this._currentFilename;
+    this._currentPath = d.path || this._currentPath;
+    this._wordCount = d.word_count || this._wordCount;
   }
 
   updateHighlight() {
@@ -1324,16 +1361,6 @@ class App {
       div.style.background = p[k];
       preview.appendChild(div);
     });
-  }
-
-  renderPalettePreview(palettes, current) {
-    const p = palettes[current];
-    if (!p) return;
-    const preview = this.$('palettePreview');
-    const keys = ['background', 'secondary', 'primary', 'accent', 'statBg', 'statText', 'statLabel'];
-    preview.innerHTML = keys.filter(k => p[k]).map(k =>
-      `<div class="palette-swatch" title="${k}" style="background:${p[k]}"></div>`
-    ).join('');
   }
 
   applyPalette(name) {
@@ -1385,8 +1412,16 @@ class App {
     const palettes = this.settings.color_palettes || {};
     const keys = Object.keys(palettes);
     if (keys.length >= 3) return;
-    const name = prompt('New palette name:');
-    if (!name || name.trim() === '') return;
+    this.$('newPaletteName').value = '';
+    this.$('newPaletteRow').classList.remove('hidden');
+    this.$('newPaletteName').focus();
+  }
+
+  _confirmAddPalette() {
+    const name = this.$('newPaletteName').value.trim();
+    this.$('newPaletteRow').classList.add('hidden');
+    if (!name) return;
+    const palettes = this.settings.color_palettes || {};
     if (palettes[name]) { alert('Palette name already exists'); return; }
     palettes[name] = {
       background: '#ECF4E8',
@@ -1586,9 +1621,10 @@ class App {
         <div class="history-info">
           <div class="history-name">${this.escHtml(e.name || 'Unknown')}</div>
             <div class="history-meta">
-                ${e.words_read || 0} read today &middot;
+                ${e.words_read || 0} words read &middot;
                 ${e.avg_speed || 0} wpm avg &middot;
                 ${Math.round(e.percent_read || 0)}% of doc
+                ${e.position > 0 ? ' &middot; resume' : ''}
               </div>
           <div class="history-date">${e.last_date || ''}</div>
         </div>
@@ -1598,6 +1634,11 @@ class App {
       el.addEventListener('click', () => {
         const path = el.dataset.path;
         if (path) {
+          this._resumePosition = -1;
+          const entry = this.history.find(e => e.path === path);
+          if (entry && typeof entry.position === 'number' && entry.position > 0) {
+            this._resumePosition = entry.position;
+          }
           this.closeHistory();
           this.bridge.send('parse_path', { path });
         }
@@ -1699,28 +1740,81 @@ class App {
       return;
     }
 
-    const paragraphs = this.fullText.split('\n\n');
     let charOffset = 0;
     let html = '';
+    const sectionHeads = [];
+    const paragraphs = this.fullText.split('\n\n');
+
+    const flushTextBlock = (lines, startOffset) => {
+      if (!lines.length) return;
+      html += `<p class="dv-p" data-offset="${startOffset}">${this.escHtml(lines.join('\n'))}</p>\n`;
+    };
 
     for (let pi = 0; pi < paragraphs.length; pi++) {
       const para = paragraphs[pi];
-      const trimmed = para.trim();
-      if (!trimmed) {
+      if (!para.trim()) {
         charOffset += para.length + 2;
         continue;
       }
 
-      const escaped = this.escHtml(trimmed);
-      const isHeading = trimmed.length < 80 && /^[A-ZÁÉÍÓÚÜÑ\s\d]{3,}$/.test(trimmed);
-      const tag = isHeading ? 'h3' : 'p';
-      html += `<${tag} class="dv-p" data-offset="${charOffset}">${escaped}</${tag}>\n`;
+      const lines = para.split('\n');
+      let blockLines = [];
+      let blockStart = charOffset;
+      let lineOffset = charOffset;
+
+      for (let li = 0; li < lines.length; li++) {
+        const line = lines[li];
+        const trimmed = line.trim();
+        const isLast = (li === lines.length - 1);
+
+        if (trimmed && this._isHeadingLine(trimmed)) {
+          flushTextBlock(blockLines, blockStart);
+          blockLines = [];
+          const hOff = lineOffset + (line.length - line.trimStart().length);
+          sectionHeads.push(hOff);
+          html += `<h3 class="dv-p" data-offset="${hOff}">${this.escHtml(trimmed)}</h3>\n`;
+        } else {
+          if (!blockLines.length) {
+            blockStart = lineOffset + (line.length - line.trimStart().length);
+          }
+          blockLines.push(line);
+        }
+
+        lineOffset += line.length + (isLast ? 0 : 1);
+      }
+
+      flushTextBlock(blockLines, blockStart);
       charOffset += para.length + 2;
     }
 
     container.innerHTML = html;
+    this._buildSectionHeads(container, sectionHeads);
     this._insertPageSeparators(container);
     this._setupDocViewerClick(container);
+  }
+
+  _isHeadingLine(t) {
+    if (!t || t.length > 120) return false;
+    if (t.length >= 3 && /^[A-ZÁÉÍÓÚÜÑ\s\d]{3,}$/.test(t)) return true;
+    if (/^\d+(\.\d+)*\.?\s+[A-ZÁÉÍÓÚÜÑ¿¡"“\)(–—]/.test(t)) return true;
+    if (t.length < 60 && /^(abstract|resumen|introduction|introducci[oó]n|methods?|m[eé]todos?|methodology|results?|resultados|discussion|discusi[oó]n|conclusions?|conclusiones|references|referencias|acknowledge?ments?|agradecimientos|keywords|palabras\s+clave|appendix|ap[eé]ndice|bibliography|bibliograf[ií]a)\s*:?\s*$/i.test(t)) return true;
+    return false;
+  }
+
+  _buildSectionHeads(container, offsets) {
+    this._sectionHeads = [];
+    if (!offsets.length || !this.wordOffsets || !this.wordOffsets.length) return;
+    const blocks = container.querySelectorAll('h3.dv-p');
+    blocks.forEach((el) => {
+      const off = parseInt(el.dataset.offset);
+      if (isNaN(off)) return;
+      const wordIdx = this._findWordNearOffset(off);
+      if (wordIdx >= 0) {
+        this._sectionHeads.push({ el, wordIdx, title: el.textContent.trim() });
+        el.title = 'Double-click to read this section';
+      }
+    });
+    this._sectionHeads.sort((a, b) => a.wordIdx - b.wordIdx);
   }
 
   _insertPageSeparators(container) {
@@ -1769,6 +1863,15 @@ class App {
       if (!block) return;
       const pOffset = parseInt(block.dataset.offset);
       if (isNaN(pOffset)) return;
+
+      // Double-click on a section heading: read that section
+      if (e.detail >= 2 && this._sectionHeads && this._sectionHeads.length) {
+        const head = this._sectionHeads.find(h => h.el === block);
+        if (head) {
+          this.readSection(head);
+          return;
+        }
+      }
 
       let clickOffset = 0;
       const _caretOffset = (startContainer, startOffset) => {
@@ -1835,7 +1938,10 @@ class App {
         const pEnd = pStart + pLen;
         if (wStart >= pStart && wStart < pEnd) {
           block.classList.add('active');
-          block.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          if (block !== this._lastActiveBlock) {
+            block.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            this._lastActiveBlock = block;
+          }
           break;
         }
       }
@@ -1928,6 +2034,22 @@ class App {
     this.rangeEnd = -1;
     this.updateRangeInfo();
     this.updateReadRangeBtn();
+    this.updateDocViewerHighlight(this.rsvp.idx);
+  }
+
+  readSection(head) {
+    const heads = this._sectionHeads || [];
+    const i = heads.indexOf(head);
+    if (i < 0) return;
+    const endWord = (i + 1 < heads.length)
+      ? Math.max(head.wordIdx, heads[i + 1].wordIdx - 1)
+      : this.rsvp.words.length - 1;
+    this.rangeStart = head.wordIdx;
+    this.rangeEnd = endWord;
+    this.updateRangeInfo();
+    this.updateReadRangeBtn();
+    this.rsvp.seek(this.rangeStart);
+    if (!this.rsvp.playing) this.togglePlay();
     this.updateDocViewerHighlight(this.rsvp.idx);
   }
 

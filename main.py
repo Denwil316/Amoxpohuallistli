@@ -1,15 +1,39 @@
 #!/usr/bin/env python3
+import os
+import sys
+
+# Workaround: conda pygobject may not see system GObject typelibs
+_typelib_path = "/usr/lib/x86_64-linux-gnu/girepository-1.0"
+if os.path.isdir(_typelib_path):
+    existing = os.environ.get("GI_TYPELIB_PATH", "")
+    if _typelib_path not in existing:
+        os.environ["GI_TYPELIB_PATH"] = (
+            f"{_typelib_path}:{existing}" if existing else _typelib_path
+        )
+
+# Workaround: GPU driver may be missing (crocus/intel); use software rendering
+if "LIBGL_ALWAYS_SOFTWARE" not in os.environ:
+    os.environ["LIBGL_ALWAYS_SOFTWARE"] = "1"
+if "WEBKIT_DISABLE_COMPOSITING_MODE" not in os.environ:
+    os.environ["WEBKIT_DISABLE_COMPOSITING_MODE"] = "1"
+
 import webview
 import json
-import os
 import threading
 import base64
-import sys
+from pathlib import Path
 
 from parser import parse_file
 from settings import Settings
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+
+
+def _sanitize_path(p):
+    try:
+        return "~/" + str(Path(p).relative_to(Path.home()))
+    except ValueError:
+        return str(p)
 
 FILE_FILTERS = (
     "All Supported Documents (*.txt;*.pdf;*.docx;*.epub;*.html;*.htm;*.rtf;*.odt;*.md)",
@@ -218,7 +242,7 @@ class AmoxpohualistliApp:
                 )
         except Exception as e:
             self.send_js(
-                {"type": "error", "data": {"message": f"Failed to parse file: {e}"}}
+                {"type": "error", "data": {"message": f"Failed to parse file: {_sanitize_path(path)} — {e}"}}
             )
 
     def cmd_load_settings(self, data):
@@ -234,6 +258,21 @@ class AmoxpohualistliApp:
         path = data.get("path", "")
         if path and os.path.isfile(path):
             try:
+                MAX_AUDIO_BYTES = 15 * 1024 * 1024
+                file_size = os.path.getsize(path)
+                if file_size > MAX_AUDIO_BYTES:
+                    self.send_js(
+                        {
+                            "type": "error",
+                            "data": {
+                                "message": (
+                                    f"Audio file too large "
+                                    f"({file_size // 1024 // 1024} MB). Max 15 MB."
+                                )
+                            },
+                        }
+                    )
+                    return
                 with open(path, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode()
                 ext = os.path.splitext(path)[1].lower()
@@ -289,6 +328,7 @@ class AmoxpohualistliApp:
             words_read=data.get("words_read", 0),
             avg_speed=data.get("avg_speed", 0),
             percent_read=data.get("percent_read", 0),
+            position=data.get("position", 0),
         )
         self.send_js({"type": "history_list", "data": entries})
 

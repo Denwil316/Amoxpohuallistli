@@ -1,6 +1,7 @@
-pywebview>=6.0
-python-docx
-ebooklib
-beautifulsoup4
-lxml
-striprtf
+pywebview>=6.0,<7.0
+PyMuPDF>=1.24,<2.0
+python-docx>=1.1,<2.0
+ebooklib>=0.18
+beautifulsoup4>=4.12,<5.0
+lxml>=5.0,<6.0
+striprtf>=0.0.6

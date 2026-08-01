@@ -6,15 +6,15 @@ Aplicación de escritorio para mejorar la velocidad de lectura mediante el méto
 
 - **RSVP** — Palabras mostradas una a una a velocidad configurable (50–2000 WPM)
 - **ORP automático** — Resaltado inteligente de la letra óptima según la longitud de la palabra (1-3→1.ª, 4-5→2.ª, 6-9→3.ª, 10+→4.ª), ignorando puntuación inicial. También disponible modo manual (center, beginning, end, middle, random)
-- **Pausas por puntuación** — Pausa extra configurable en finales de frase (`.!?;:` 1-4x) y comas (1.5x)
-- **Ralentización de palabras largas** — Tiempo adicional por carácter en palabras ≥12 letras (0-50%)
+- **Pausas por puntuación** — Pausa extra configurable en finales de frase (`.!?;:` 1-4x, default 3x) y comas (configurable, 1-4x, default 2x)
+- **Ralentización de palabras largas** — Tiempo adicional por carácter en palabras ≥10 caracteres (0-50%, default 8%)
 - **Pausas periódicas** — Pausa de comprensión cada N palabras (100-2000ms)
 - **Efecto de fade** — Transición suave de opacidad entre palabras (50-300ms)
 - **Modo enfoque** — Interfaz minimalista durante la lectura (oculta toolbar y stats)
 - **Marco contextual** — Muestra 1/3/5/7 palabras simultáneas con la actual resaltada en el centro
 - **Visor de documento** — Panel lateral con el texto completo del documento renderizado por párrafos; haz clic en cualquier palabra para saltar a ella, o Shift+clic para seleccionar un rango de lectura con resaltado visual
 - **Lectura por rango** — Selecciona un fragmento del documento y léelo de corrido sin distracciones; el RSVP se detiene automáticamente al alcanzar el final del rango
-- **Barra de progreso interactiva** — Haz clic en cualquier posición de la barra para saltar allí
+- **Barra de progreso interactiva** — Haz clic en cualquier posición de la barra para saltar allí (cuando la lectura está pausada)
 - **Tiempo restante** — Estimación del tiempo que queda de lectura según WPM actual
 - **Estadísticas en vivo** — Words Read, Session Words, Avg Speed (basada en tiempo de lectura real, no tiempo de pared), Time Elapsed, Time Remaining
 - **Reanudación de sesión** — Al cerrar la app, guarda automáticamente la posición. Al abrir de nuevo, pregunta si quieres reanudar
@@ -56,7 +56,26 @@ Aplicación de escritorio para mejorar la velocidad de lectura mediante el méto
 
 **Linux (Ubuntu/Debian/Mint):**
 ```bash
-sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.1 python3-fitz
+# Bibliotecas de sistema requeridas por pywebview
+sudo apt install gir1.2-gtk-3.0 gir1.2-webkit2-4.1
+
+# Solo si usas el Python del sistema (no conda):
+sudo apt install python3-gi python3-gi-cairo
+```
+
+**Linux con conda / Anaconda:**
+```bash
+sudo apt install gir1.2-gtk-3.0 gir1.2-webkit2-4.1
+conda install -c conda-forge pygobject
+# pygobject en conda no ve las typelibs del sistema:
+export GI_TYPELIB_PATH="/usr/lib/x86_64-linux-gnu/girepository-1.0:$GI_TYPELIB_PATH"
+```
+> `run.sh` ya configura `GI_TYPELIB_PATH` automáticamente. Si ejecutas `python3 main.py` directamente, exporta la variable antes.
+
+**Alternativa Linux — backend CEF (no requiere GTK):**
+```bash
+pip install cefpython3
+# pywebview usará Chromium empaquetado en lugar de GTK/WebKit
 ```
 
 **macOS:**
@@ -77,7 +96,7 @@ pip install -r requirements.txt
 
 O manualmente:
 ```bash
-pip install pywebview python-docx ebooklib beautifulsoup4 lxml striprtf
+pip install pywebview PyMuPDF python-docx ebooklib beautifulsoup4 lxml striprtf
 ```
 
 > **Linux (Ubuntu 24.04+):** si encuentras error `externally-managed-environment`, usa `pip install --user --break-system-packages` o un entorno virtual:
@@ -106,7 +125,7 @@ python3 /ruta/completa/a/reading_training_vp/main.py
 
 1. **Abrir un documento** — Haz clic en `Open` o presiona `O`. Selecciona cualquier archivo compatible.
 2. **Ver documento** — Presiona `D` o el botón `Doc` para abrir el visor de documento. Haz clic en cualquier palabra para empezar desde ahí.
-3. **Seleccionar rango** — En el visor, haz clic en una palabra y luego Shift+clic en otra para seleccionar un fragmento (los párrafos en el rango se resaltan en ámbar). Presiona `Read Selected` para leer solo ese rango.
+3. **Seleccionar rango** — En el visor de documento, las secciones detectadas (enumeradas como "1. Introduction" o estándar como "Abstract", "References") se muestran como encabezados resaltados. **Doble clic** en un encabezado para leer automáticamente toda esa sección hasta la siguiente. Alternativamente, haz clic normal en cualquier palabra para empezar desde ahí, o Shift+clic en otra palabra para seleccionar un rango de lectura con resaltado visual.
 4. **Iniciar lectura** — Presiona `▶ Play` o la barra espaciadora.
 5. **Ajustar velocidad** — Usa los botones `+` / `−`, el deslizador, o las flechas `↑` / `↓`.
 6. **Navegar** — `←` / `→` para avanzar/retroceder una palabra. `Shift+←` / `Shift+→` para 10 palabras.
@@ -150,7 +169,7 @@ Las siguientes funcionalidades del motor RSVP están inspiradas en [thomaskolman
 | **Efecto de fade** | Transición suave de opacidad entre palabras |
 | **Modo enfoque** | Interfaz minimalista que oculta elementos durante la lectura (concepto adaptado de su modo focus) |
 | **Reanudación de sesión** | Guardado automático de posición al pausar, con opción de reanudar al abrir la app |
-| **Barra de progreso interactiva** | Click en la barra para saltar a cualquier posición (concepto adaptado) |
+| **Barra de progreso interactiva** | Click en la barra para saltar a cualquier posición (en pausa; concepto adaptado) |
 | **Tiempo restante** | Estimación de tiempo basada en palabras restantes y WPM actual |
 | **Marco contextual multi-palabra** | Visualización de palabras de contexto alrededor de la palabra actual |
 | **Soporte RTL** | Detección de escritura de derecha a izquierda (hebreo/árabe) |
@@ -190,7 +209,7 @@ El historial de lectura se guarda en `~/.config/deepsite/history.json` (máx 50 
 
 La caché de textos parseados se guarda en `~/.config/deepsite/cache/{sha256}.json` (se invalida si cambia el mtime del archivo).
 
-Los archivos de audio cargados se almacenan en `~/.config/deepsite/audio/`.
+Los archivos de audio de efectos (tick, start, end) se cargan en memoria como base64 (límite 15 MB). El directorio `~/.config/deepsite/audio/` está reservado para almacenamiento futuro.
 
 ## Arquitectura
 

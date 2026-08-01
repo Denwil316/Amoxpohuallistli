@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import sys
@@ -21,6 +22,9 @@ AUDIO_DIR = os.path.join(CONFIG_DIR, "audio")
 CACHE_DIR = os.path.join(CONFIG_DIR, "cache")
 HISTORY_FILE = os.path.join(CONFIG_DIR, "history.json")
 MAX_HISTORY = 50
+CACHE_SCHEMA_VERSION = 3
+MAX_CACHE_FILES = 50
+NESTED_SETTINGS_KEYS = {"keyboard_shortcuts", "color_palettes"}
 
 DEFAULT_PALETTE = {
     "Default": {
@@ -82,6 +86,42 @@ DEFAULT_SETTINGS = {
 }
 
 
+def _atomic_write(path, data):
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _deep_merge(base, override):
+    for key, value in override.items():
+        if key in NESTED_SETTINGS_KEYS and isinstance(value, dict) and isinstance(base.get(key), dict):
+            base[key].update(value)
+        else:
+            base[key] = value
+
+
+def _evict_cache():
+    try:
+        files = [os.path.join(CACHE_DIR, f) for f in os.listdir(CACHE_DIR) if f.endswith(".json")]
+        if len(files) > MAX_CACHE_FILES:
+            files.sort(key=lambda f: os.path.getmtime(f))
+            for f in files[: len(files) - MAX_CACHE_FILES]:
+                try:
+                    os.unlink(f)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 class Settings:
     @staticmethod
     def ensure_dir():
@@ -95,17 +135,16 @@ class Settings:
         try:
             with open(CONFIG_FILE) as f:
                 settings = json.load(f)
-                merged = DEFAULT_SETTINGS.copy()
-                merged.update(settings)
+                merged = copy.deepcopy(DEFAULT_SETTINGS)
+                _deep_merge(merged, settings)
                 return merged
         except (FileNotFoundError, json.JSONDecodeError):
-            return DEFAULT_SETTINGS.copy()
+            return copy.deepcopy(DEFAULT_SETTINGS)
 
     @staticmethod
     def save(settings):
         Settings.ensure_dir()
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(settings, f, indent=2)
+        _atomic_write(CONFIG_FILE, settings)
 
     @staticmethod
     def get_audio_dir():
@@ -124,6 +163,7 @@ class Settings:
     def save_parsed_cache(file_path, words, full_text, word_offsets, page_starts=None):
         Settings.ensure_dir()
         cache = {
+            "schema_version": CACHE_SCHEMA_VERSION,
             "file_path": file_path,
             "file_mtime": os.path.getmtime(file_path),
             "words": words,
@@ -133,8 +173,9 @@ class Settings:
             "word_count": len(words),
             "cached_at": time.time(),
         }
-        with open(Settings.get_cache_path(file_path), "w") as f:
-            json.dump(cache, f, indent=2)
+        cache_path = Settings.get_cache_path(file_path)
+        _atomic_write(cache_path, cache)
+        _evict_cache()
 
     @staticmethod
     def load_parsed_cache(file_path):
@@ -142,6 +183,8 @@ class Settings:
             cache_path = Settings.get_cache_path(file_path)
             with open(cache_path) as f:
                 cache = json.load(f)
+            if cache.get("schema_version") != CACHE_SCHEMA_VERSION:
+                return None
             if cache.get("file_mtime") == os.path.getmtime(file_path):
                 return cache
         except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -160,8 +203,7 @@ class Settings:
     @staticmethod
     def save_history(entries):
         Settings.ensure_dir()
-        with open(HISTORY_FILE, "w") as f:
-            json.dump(entries, f, indent=2)
+        _atomic_write(HISTORY_FILE, entries)
 
     @staticmethod
     def clear_history():
@@ -169,17 +211,18 @@ class Settings:
         return []
 
     @staticmethod
-    def update_history(name, path, total_words, words_read, avg_speed, percent_read):
+    def update_history(name, path, total_words, words_read, avg_speed, percent_read, position=0):
         entries = Settings.load_history()
         now = time.strftime("%Y-%m-%d %H:%M")
         found = False
         for e in entries:
             if e.get("path") == path:
-                e["words_read"] = words_read
+                e["words_read"] = max(e.get("words_read", 0), words_read)
                 e["avg_speed"] = avg_speed
                 e["percent_read"] = round(percent_read, 1)
                 e["last_date"] = now
                 e["total_words"] = total_words
+                e["position"] = position
                 found = True
                 break
         if not found:
@@ -189,10 +232,11 @@ class Settings:
                     "name": name,
                     "path": path,
                     "total_words": total_words,
-                    "words_read": words_read,
+                    "words_read": max(0, words_read),
                     "avg_speed": avg_speed,
                     "percent_read": round(percent_read, 1),
                     "last_date": now,
+                    "position": position,
                 },
             )
         if len(entries) > MAX_HISTORY:

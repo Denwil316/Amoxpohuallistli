@@ -23,21 +23,21 @@ El tiempo real que cada palabra permanece en pantalla puede ser mayor que el tie
 
 ### 2a. Ajuste por longitud de palabra (`wordLengthWPMMultiplier`)
 
-Palabras de **12 caracteres o más** reciben tiempo adicional proporcional:
+Palabras de **10 caracteres o más** reciben tiempo adicional proporcional. La medida se hace sobre `word.length` (incluye puntuación), no solo letras.
 
 ```
-excesoLetras = max(0, len(palabra) - 12)
+excesoLetras = max(0, len(palabra) - 10)
 factorLongitud = 1 + (excesoLetras * multiplicador / 100)
 tiempoAjustado = tiempoBase * factorLongitud
 ```
 
-Donde `multiplicador` se configura en 0–50% (default: 5%).
+Donde `multiplicador` se configura en 0–50% (default: 8%).
 
-Ejemplo con palabra de 15 letras a 250 WPM, multiplicador 5%:
+Ejemplo con palabra de 15 caracteres a 250 WPM, multiplicador 8%:
 ```
-excesoLetras = 15 - 12 = 3
-factorLongitud = 1 + (3 * 0.05) = 1.15
-tiempoAjustado = 240 * 1.15 = 276 ms
+excesoLetras = 15 - 10 = 5
+factorLongitud = 1 + (5 * 0.08) = 1.40
+tiempoAjustado = 240 * 1.40 = 336 ms
 ```
 
 ### 2b. Ajuste por puntuación final (`pauseOnPunctuation`)
@@ -46,14 +46,14 @@ Si la palabra **termina** en ciertos signos de puntuación, el tiempo base se mu
 
 | Signo | Multiplicador |
 |-------|--------------|
-| `.!?;:` | `punctuationPauseMultiplier` (1–4x, default: 2x) |
-| `,` | 1.5× (fijo) |
+| `.!?;:` | `punctuationPauseMultiplier` (1–4x, default: 3x) |
+| `,` | `commaPauseMultiplier` (1–4x, default: 2x) |
 
-El multiplicador para final de frase se configura en Settings → Punctuation Pause Multiplier.
+Ambos multiplicadores se configuran en Settings → Pauses.
 
-Ejemplo: palabra terminada en `.` a 250 WPM, multiplicador 2x:
+Ejemplo: palabra terminada en `.` a 250 WPM, multiplicador 3x:
 ```
-tiempoAjustado = 240 * 2 = 480 ms
+tiempoAjustado = 240 * 3 = 720 ms
 ```
 
 ### 2c. Prioridad de ajustes
@@ -93,13 +93,15 @@ Si el ajuste es negativo (el tick se atrasó), el siguiente tick se programa inm
 
 ## 4. Velocidad promedio reportada
 
-La velocidad promedio se calcula usando el **tiempo base ideal**, NO el tiempo ajustado por puntuación/longitud. Esto asegura que el promedio converja a la velocidad configurada.
+La velocidad promedio se calcula usando el **tiempo base**, que es el tiempo de palabra (`60000/speed`) más el tiempo de pausas de comprensión cuando están activas. Los ajustes por puntuación y longitud NO se incluyen (van a `_accDelay`).
 
 ### Acumulador base (`_baseDelay`)
 
 ```
 // Por cada palabra procesada en tick():
 _baseDelay += 60000 / speed
+// Si hay pausa de comprension activa:
+_baseDelay += pauseDuration
 ```
 
 ### Fórmula
@@ -119,7 +121,7 @@ sessionWords = 375
 velocidadPromedio = 375 / 1.5 = 250 WPM
 ```
 
-La velocidad promedio converge exactamente a la velocidad configurada porque `_baseDelay` usa `60000/speed` por palabra, independientemente de los ajustes por puntuación o longitud.
+La velocidad promedio converge a la velocidad configurada cuando NO hay pausas periódicas (`pauseAfterWords = 0`). Con pausas activas, `_baseDelay` incluye el tiempo de pausa y la velocidad promedio será menor que la configurada (reflejando la velocidad efectiva de lectura).
 
 ### Acumulador real (`_accDelay`)
 
@@ -242,9 +244,9 @@ Donde `totalPalabras` es `_wordCount` (conteo real del documento) si está dispo
    └── _accDelay y _baseDelay preservados (NO se reinician)
 
 6. Usuario busca (seek) durante reproducción
-   ├── pause() → stopSessionTimer()
-   ├── seek() → onWord() → sessionWords++ (sin _baseDelay)
-   └── play() → tick() continúa
+    ├── pause() → stopSessionTimer()
+    ├── seek() → muestra la palabra en el visor, NO incrementa sessionWords
+    └── play() → tick() continúa
 ```
 
 ---
